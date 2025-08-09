@@ -257,40 +257,45 @@ public class SimulationController {
         return stats;
     }
 
-    /**
-     * Main simulation loop
-     */
-    private void runSimulation() {
-        long lastTime = System.currentTimeMillis();
+	/**
+	 * Main simulation loop
+	 */
+	private void runSimulation() {
+		long lastRealTime = System.nanoTime(); // Use nanoTime for better precision
 
-        while (isRunning && !Thread.currentThread().isInterrupted()) {
-            try {
-                // Calculate delta time for consistent simulation speed
-                long currentTime = System.currentTimeMillis();
-                double deltaTime = (currentTime - lastTime) / 1000.0; // seconds
-                lastTime = currentTime;
+		while (isRunning && !Thread.currentThread().isInterrupted()) {
+			try {
+				long currentRealTime = System.nanoTime();
+				// Real time elapsed in seconds
+				double realWorldDeltaTime = (currentRealTime - lastRealTime) / 1_000_000_000.0;
+				lastRealTime = currentRealTime;
 
-                // Step simulation multiple times based on time scale
-                double timeScale = simulator.getTimeScale();
-                int stepsPerFrame = (int)(timeScale / 100.0); // Base rate: 1 step per 100 yr/s
-                stepsPerFrame = Math.max(1, Math.min(100, stepsPerFrame)); // Limit steps
+				// Clamp delta time to avoid huge simulation jumps if the thread was paused
+				if (realWorldDeltaTime > 0.1) {
+					realWorldDeltaTime = 0.1;
+				}
 
-                for (int i = 0; i < stepsPerFrame && isRunning; i++) {
-                    simulator.step();
-                }
+				// Get the time scale (e.g., 100,000 years/sec)
+				double timeScale = simulator.getTimeScale();
 
-                // Target ~30 FPS for smooth visualization
-                Thread.sleep(33);
+				// Calculate the amount of simulation time to advance in this frame
+				double simulationDeltaTime = realWorldDeltaTime * timeScale;
 
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
-            } catch (Exception e) {
-                System.err.println("Simulation error: " + e.getMessage());
-                e.printStackTrace();
-            }
-        }
+				// Advance the simulation by that amount of time.
+				// We assume step(double years) exists for stable physics.
+				simulator.step(simulationDeltaTime);
 
-        isRunning = false;
-    }
-}
+				// Sleep to yield CPU and target a reasonable backend update rate (~60Hz)
+				Thread.sleep(16);
+
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+				break;
+			} catch (Exception e) {
+				System.err.println("Simulation error: " + e.getMessage());
+				e.printStackTrace();
+			}
+		}
+
+		isRunning = false;
+	}}

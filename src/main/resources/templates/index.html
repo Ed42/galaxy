@@ -362,16 +362,23 @@
         let frameCount = 0;
         let fps = 0;
 
-        // Initialize canvas and start animation loop
+        // Local cache for simulation state to decouple rendering from fetching
+        let simulationState = { particles: [], currentTime: 0, energy: 0, energyDrift: 0, particleCount: 0, avgVelocity: 0, avgDistanceToCenter: 0 };
+
+        // Initialize canvas and start loops
         window.onload = function() {
             canvas = document.getElementById('galaxyCanvas');
             ctx = canvas.getContext('2d');
 
             setupCanvasInteraction();
-            startAnimationLoop();
-            updateSimulationData();
 
-            // Update UI every second
+            // Start the animation loop for smooth rendering
+            startAnimationLoop();
+
+            // Fetch simulation data at a fixed interval (e.g., 5 times per second)
+            setInterval(updateSimulationData, 200);
+
+            // Update less critical UI stats every second
             setInterval(updateUI, 1000);
         };
 
@@ -387,42 +394,36 @@
                 if (isDragging) {
                     let deltaX = e.clientX - lastMouseX;
                     let deltaY = e.clientY - lastMouseY;
-                    offsetX += deltaX / zoom;
-                    offsetY += deltaY / zoom;
+                    offsetX += deltaX / (zoom * ((canvas.width / 2) / 15000)); // Adjust pan speed based on scale and zoom
+                    offsetY -= deltaY / (zoom * ((canvas.width / 2) / 15000));
                     lastMouseX = e.clientX;
                     lastMouseY = e.clientY;
                 }
             });
 
-            canvas.addEventListener('mouseup', function() {
-                isDragging = false;
-            });
-
-            canvas.addEventListener('mouseleave', function() {
-                isDragging = false;
-            });
+            canvas.addEventListener('mouseup', function() { isDragging = false; });
+            canvas.addEventListener('mouseleave', function() { isDragging = false; });
 
             // Mouse wheel for zooming
             canvas.addEventListener('wheel', function(e) {
                 e.preventDefault();
                 let zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
                 zoom *= zoomFactor;
-                zoom = Math.max(0.1, Math.min(10, zoom));
+                zoom = Math.max(0.1, Math.min(20, zoom)); // Increased max zoom
             });
         }
 
         function startAnimationLoop() {
             function animate(currentTime) {
                 // Calculate FPS
-                if (currentTime - lastFrameTime >= 1000) {
-                    fps = Math.round((frameCount * 1000) / (currentTime - lastFrameTime));
-                    document.getElementById('fps-counter').textContent = `FPS: ${fps}`;
-                    frameCount = 0;
-                    lastFrameTime = currentTime;
+                if (lastFrameTime > 0) {
+                    const delta = currentTime - lastFrameTime;
+                    fps = 1000 / delta;
+                    document.getElementById('fps-counter').textContent = `FPS: ${Math.round(fps)}`;
                 }
-                frameCount++;
+                lastFrameTime = currentTime;
 
-                // Render frame
+                // Render frame using local data
                 render();
 
                 requestAnimationFrame(animate);
@@ -430,109 +431,119 @@
             requestAnimationFrame(animate);
         }
 
-        async function render() {
-            // Clear canvas
+        // Fetches data and stores it in the local simulationState variable
+        async function updateSimulationData() {
+            try {
+                const response = await fetch('/api/state');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+
+                // Update the local state
+                simulationState = data;
+                isRunning = data.isRunning || false;
+                fastForward = data.fastForward || false;
+
+            } catch (error) {
+                console.error('Error updating simulation data:', error);
+            }
+        }
+
+        // Renders the scene using the data from the local simulationState
+        function render() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.fillStyle = '#000000';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            try {
-                // Fetch current simulation state
-                const response = await fetch('/api/state');
-                const data = await response.json();
-
-                if (data.particles) {
-                    renderParticles(data.particles);
-                }
-
-                // Render SMBH at center
-                renderSMBH();
-
-                // Update UI with current data
-                if (data.currentTime !== undefined) {
-                    document.getElementById('simTime').textContent = (data.currentTime / 1e6).toFixed(2) + ' Myr';
-                }
-
-            } catch (error) {
-                console.error('Error fetching simulation data:', error);
+            if (simulationState && simulationState.particles) {
+                renderParticles(simulationState.particles);
             }
+
+            renderSMBH();
         }
 
         function renderParticles(particles) {
             const centerX = canvas.width / 2;
             const centerY = canvas.height / 2;
-            // Scale to fit ±700 parsec range in 800px canvas: 800/1400 = 0.57
-            const scale = 0.6 * zoom; // Increased scale for proper visibility
 
+            // Set a view for a 30,000 parsec diameter galaxy (15kpc radius)
+            const viewRadiusPc = 15000;
+            const scale = (canvas.width / 2) / viewRadiusPc; // pixels per parsec
+
+            ctx.globalAlpha = 0.8;
             particles.forEach(particle => {
-                // Convert from parsecs to canvas coordinates
-                // Particles are in range ±700 parsecs, scale to fit canvas
-                let screenX = centerX + (particle.x + offsetX) * scale;
-                let screenY = centerY - (particle.y + offsetY) * scale; // Flip Y axis
+                // Backend provides coordinates in parsecs
+                const screenX = centerX + (particle.x - offsetX) * scale * zoom;
+                const screenY = centerY - (particle.y - offsetY) * scale * zoom; // Flip Y axis
 
-                // Skip particles outside canvas
-                if (screenX < -10 || screenX > canvas.width + 10 ||
-                    screenY < -10 || screenY > canvas.height + 10) {
+                // Simple check to avoid drawing particles far off-screen
+                if (screenX < -10 || screenX > canvas.width + 10 || screenY < -10 || screenY > canvas.height + 10) {
                     return;
                 }
 
-                // Color based on stellar type
                 let color;
                 switch (particle.type) {
-                    case 'MAIN_SEQUENCE':
-                        color = '#42a5f5'; // Blue for disk stars
-                        break;
-                    case 'GIANT':
-                        color = '#ffca28'; // Yellow for bulge stars
-                        break;
-                    default:
-                        color = '#ffffff';
+                    case 'MAIN_SEQUENCE': color = '#42a5f5'; break;
+                    case 'GIANT': color = '#ffca28'; break;
+                    default: color = '#ffffff';
                 }
 
-                // Brightness based on local density (simplified)
-                let brightness = Math.min(1.0, particle.mass / 1e6);
-
                 ctx.fillStyle = color;
-                ctx.globalAlpha = brightness * 0.8;
                 ctx.beginPath();
-                ctx.arc(screenX, screenY, Math.max(1, zoom), 0, 2 * Math.PI);
+                ctx.arc(screenX, screenY, Math.max(0.5, 1.2 * zoom), 0, 2 * Math.PI);
                 ctx.fill();
             });
-
             ctx.globalAlpha = 1.0;
         }
 
         function renderSMBH() {
             const centerX = canvas.width / 2;
             const centerY = canvas.height / 2;
+            const viewRadiusPc = 15000;
+            const scale = (canvas.width / 2) / viewRadiusPc;
 
-            // Render SMBH as red dot at center
+            // Adjust SMBH position based on pan (offset)
+            const screenX = centerX - offsetX * scale * zoom;
+            const screenY = centerY + offsetY * scale * zoom;
+
             ctx.fillStyle = '#f44336';
             ctx.beginPath();
-            ctx.arc(centerX + offsetX * zoom * 0.4, centerY - offsetY * zoom * 0.4, Math.max(2, 4 * zoom), 0, 2 * Math.PI);
+            ctx.arc(screenX, screenY, Math.max(2, 4 * zoom), 0, 2 * Math.PI);
             ctx.fill();
         }
 
-        // Control functions
+        // Updates the statistics panel from local state
+        function updateUI() {
+            if (!simulationState) return;
+
+            document.getElementById('simTime').textContent = (simulationState.currentTime / 1e6).toFixed(2) + ' Myr';
+            document.getElementById('totalEnergy').textContent = simulationState.energy.toExponential(2);
+            document.getElementById('energyDrift').textContent = (simulationState.energyDrift * 100).toFixed(3) + '%';
+            document.getElementById('particleCount').textContent = simulationState.particleCount;
+            document.getElementById('avgVelocity').textContent = Math.round(simulationState.avgVelocity) + ' km/s';
+            document.getElementById('avgDistance').textContent = Math.round(simulationState.avgDistanceToCenter) + ' pc';
+        }
+
+        // Control functions (no changes needed below this line)
         async function toggleSimulation() {
             const btn = document.getElementById('playBtn');
+            const endpoint = isRunning ? '/api/pause' : '/api/start';
 
-            if (isRunning) {
-                await fetch('/api/pause', { method: 'POST' });
-                btn.textContent = '▶ Start';
-                btn.className = 'btn-primary';
-                isRunning = false;
-            } else {
-                await fetch('/api/start', { method: 'POST' });
-                btn.textContent = '⏸ Pause';
-                btn.className = 'btn-warning';
-                isRunning = true;
-            }
+            await fetch(endpoint, { method: 'POST' });
+            const response = await fetch('/api/state'); // Get confirmed state
+            const data = await response.json();
+            isRunning = data.isRunning;
+
+            btn.textContent = isRunning ? '⏸ Pause' : '▶ Start';
+            btn.className = isRunning ? 'btn-warning' : 'btn-primary';
         }
 
         async function resetSimulation() {
             await fetch('/api/reset', { method: 'POST' });
-            document.getElementById('playBtn').textContent = '▶ Start';
-            document.getElementById('playBtn').className = 'btn-primary';
+            const btn = document.getElementById('playBtn');
+            btn.textContent = '▶ Start';
+            btn.className = 'btn-primary';
             isRunning = false;
         }
 
@@ -575,7 +586,6 @@
 
         async function toggleBarPotential() {
             const checkbox = document.getElementById('barPotentialCheck');
-
             await fetch('/api/barPotential', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -587,68 +597,15 @@
             showQuadtree = !showQuadtree;
         }
 
-        function zoomIn() {
-            zoom *= 1.5;
-            zoom = Math.min(10, zoom);
-        }
-
-        function zoomOut() {
-            zoom /= 1.5;
-            zoom = Math.max(0.1, zoom);
-        }
-
-        function resetZoom() {
-            zoom = 1.0;
-            offsetX = 0;
-            offsetY = 0;
-        }
+        function zoomIn() { zoom *= 1.5; zoom = Math.min(20, zoom); }
+        function zoomOut() { zoom /= 1.5; zoom = Math.max(0.1, zoom); }
+        function resetZoom() { zoom = 1.0; offsetX = 0; offsetY = 0; }
 
         function setView(viewType) {
-            if (viewType === 'full') {
-                zoom = 1.0;
-                offsetX = 0;
-                offsetY = 0;
-            } else if (viewType === 'center') {
-                zoom = 8.0; // Zoom in for 100pc view
-                offsetX = 0;
-                offsetY = 0;
+            resetZoom();
+            if (viewType === 'center') {
+                zoom = 15.0; // Zoom in for a closer view
             }
         }
-
-        async function updateSimulationData() {
-            try {
-                const response = await fetch('/api/state');
-                const data = await response.json();
-
-                // Update simulation state
-                isRunning = data.isRunning || false;
-                fastForward = data.fastForward || false;
-
-                // Update UI elements
-                updateUI();
-
-            } catch (error) {
-                console.error('Error updating simulation data:', error);
-            }
-        }
-
-        async function updateUI() {
-            try {
-                const stateResponse = await fetch('/api/state');
-                const stateData = await stateResponse.json();
-
-                // Update statistics
-                document.getElementById('simTime').textContent = (stateData.currentTime / 1e6).toFixed(2) + ' Myr';
-                document.getElementById('totalEnergy').textContent = stateData.energy.toExponential(2);
-                document.getElementById('energyDrift').textContent = (stateData.energyDrift * 100).toFixed(3) + '%';
-                document.getElementById('particleCount').textContent = stateData.particleCount;
-                document.getElementById('avgVelocity').textContent = Math.round(stateData.avgVelocity) + ' km/s';
-                document.getElementById('avgDistance').textContent = Math.round(stateData.avgDistanceToCenter) + ' pc';
-
-            } catch (error) {
-                console.error('Error updating UI:', error);
-            }
-        }
-    </script>
-</body>
+    </script></body>
 </html>

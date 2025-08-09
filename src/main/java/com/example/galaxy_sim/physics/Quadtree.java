@@ -6,210 +6,174 @@ import java.util.List;
 
 /**
  * Barnes-Hut Quadtree implementation for efficient N-body force calculations.
- * Uses θ = 0.7 as the opening angle criterion for approximations.
  */
 public class Quadtree {
-    private static final double THETA = 0.7; // Opening angle criterion
-    private static final int MAX_PARTICLES_PER_NODE = 1;
+	private final double x, y, size; // Center and half-width of this node
+	private double totalMass = 0;
+	private double centerOfMassX = 0;
+	private double centerOfMassY = 0;
+	private Particle particleInNode; // If it's a leaf node with one particle
 
-    private final double x, y, size; // Center and half-width of this node
-    private double totalMass = 0;
-    private double centerOfMassX = 0;
-    private double centerOfMassY = 0;
-    private List<Particle> particles = new ArrayList<>();
+	// Child quadrants: NW, NE, SW, SE
+	private Quadtree[] children = new Quadtree[4];
+	private boolean isLeaf = true;
 
-    // Child quadrants: NW, NE, SW, SE
-    private Quadtree[] children = new Quadtree[4];
-    private boolean hasChildren = false;
+	public Quadtree(double centerX, double centerY, double halfSize) {
+		this.x = centerX;
+		this.y = centerY;
+		this.size = halfSize;
+	}
 
-    public Quadtree(double centerX, double centerY, double halfSize) {
-        this.x = centerX;
-        this.y = centerY;
-        this.size = halfSize;
-    }
+	/**
+	 * Inserts a particle into the quadtree.
+	 */
+	public void insert(Particle p) {
+		if (!contains(p.x(), p.y())) {
+			return;
+		}
 
-    /**
-     * Inserts a particle into the quadtree
-     */
-    public void insert(Particle particle) {
-        // Check if particle is within bounds
-        if (!contains(particle.x(), particle.y())) {
-            return;
-        }
+		if (isLeaf) {
+			if (particleInNode == null) {
+				// This leaf is empty, store the particle here.
+				particleInNode = p;
+				totalMass = p.mass();
+				centerOfMassX = p.x();
+				centerOfMassY = p.y();
+				return;
+			} else {
+				// This leaf is occupied, we must subdivide.
+				subdivide();
+				// Re-insert the original particle into the correct child.
+				addToChild(particleInNode);
+				particleInNode = null; // No longer a leaf with a single particle.
+			}
+		}
 
-        totalMass += particle.mass();
+		// Add the new particle to the correct child.
+		addToChild(p);
+		// Update this node's center of mass.
+		updateCenterOfMass(p);
+	}
 
-        // Update center of mass
-        if (totalMass > 0) {
-            centerOfMassX = (centerOfMassX * (totalMass - particle.mass()) + particle.x() * particle.mass()) / totalMass;
-            centerOfMassY = (centerOfMassY * (totalMass - particle.mass()) + particle.y() * particle.mass()) / totalMass;
-        }
+	private void updateCenterOfMass(Particle p) {
+		centerOfMassX = (centerOfMassX * totalMass + p.x() * p.mass()) / (totalMass + p.mass());
+		centerOfMassY = (centerOfMassY * totalMass + p.y() * p.mass()) / (totalMass + p.mass());
+		totalMass += p.mass();
+	}
 
-        if (!hasChildren && particles.size() < MAX_PARTICLES_PER_NODE) {
-            // Add particle to this leaf node
-            particles.add(particle);
-        } else {
-            // Need to subdivide or add to existing children
-            if (!hasChildren) {
-                subdivide();
-                // Move existing particles to children
-                for (Particle p : particles) {
-                    addToChild(p);
-                }
-                particles.clear();
-            }
-            addToChild(particle);
-        }
-    }
+	private void subdivide() {
+		double quarterSize = size / 2;
+		children[0] = new Quadtree(x - quarterSize, y - quarterSize, quarterSize); // SW
+		children[1] = new Quadtree(x + quarterSize, y - quarterSize, quarterSize); // SE
+		children[2] = new Quadtree(x - quarterSize, y + quarterSize, quarterSize); // NW
+		children[3] = new Quadtree(x + quarterSize, y + quarterSize, quarterSize); // NE
+		isLeaf = false;
+	}
 
-    /**
-     * Subdivides this node into four quadrants
-     */
-    private void subdivide() {
-        double quarterSize = size / 2;
-        children[0] = new Quadtree(x - quarterSize, y + quarterSize, quarterSize); // NW
-        children[1] = new Quadtree(x + quarterSize, y + quarterSize, quarterSize); // NE
-        children[2] = new Quadtree(x - quarterSize, y - quarterSize, quarterSize); // SW
-        children[3] = new Quadtree(x + quarterSize, y - quarterSize, quarterSize); // SE
-        hasChildren = true;
-    }
+	private void addToChild(Particle p) {
+		for (Quadtree child : children) {
+			if (child.contains(p.x(), p.y())) {
+				child.insert(p);
+				return;
+			}
+		}
+	}
 
-    /**
-     * Adds a particle to the appropriate child quadrant
-     */
-    private void addToChild(Particle particle) {
-        for (Quadtree child : children) {
-            if (child.contains(particle.x(), particle.y())) {
-                child.insert(particle);
-                break;
-            }
-        }
-    }
+	private boolean contains(double px, double py) {
+		return px >= x - size && px <= x + size && py >= y - size && py <= y + size;
+	}
 
-    /**
-     * Checks if a point is contained within this node
-     */
-    private boolean contains(double px, double py) {
-        return px >= x - size && px < x + size && py >= y - size && py < y + size;
-    }
+	/**
+	 * Calculates gravitational force on a particle using Barnes-Hut approximation.
+	 */
+	public Force calculateForce(Particle p, double G, double theta, double softening) {
+		Force totalForce = new Force(0, 0);
 
-    /**
-     * Calculates gravitational force on a particle using Barnes-Hut approximation
-     */
-    public Force calculateForce(Particle particle) {
-        if (totalMass == 0) {
-            return new Force(0, 0);
-        }
+		if (isLeaf) {
+			if (particleInNode != null && particleInNode != p) {
+				totalForce = totalForce.add(calculateDirectForce(p, particleInNode, G, softening));
+			}
+		} else {
+			double dx = centerOfMassX - p.x();
+			double dy = centerOfMassY - p.y();
+			double distance = Math.sqrt(dx * dx + dy * dy);
 
-        double dx = centerOfMassX - particle.x();
-        double dy = centerOfMassY - particle.y();
-        double distance = Math.sqrt(dx * dx + dy * dy);
+			// If node is far enough away, approximate it as a single mass.
+			if ((2 * size) / distance < theta) {
+				totalForce = totalForce.add(calculateDirectForce(p, totalMass, centerOfMassX, centerOfMassY, G, softening));
+			} else {
+				// Otherwise, recurse into children.
+				for (Quadtree child : children) {
+					if (child.totalMass > 0) {
+						totalForce = totalForce.add(child.calculateForce(p, G, theta, softening));
+					}
+				}
+			}
+		}
+		return totalForce;
+	}
 
-        // Skip self-interaction
-        if (distance < 1e-10) {
-            return new Force(0, 0);
-        }
+	/**
+	 * Calculates potential energy on a particle.
+	 */
+	public double calculatePotential(Particle p, double G, double theta, double softening) {
+		double totalPotential = 0.0;
 
-        // Barnes-Hut criterion: if s/d < θ, treat as single body
-        if (!hasChildren || size / distance < THETA) {
-            return calculateDirectForce(particle, centerOfMassX, centerOfMassY, totalMass);
-        } else {
-            // Recursively calculate force from children
-            Force totalForce = new Force(0, 0);
-            for (Quadtree child : children) {
-                if (child != null) {
-                    Force childForce = child.calculateForce(particle);
-                    totalForce = totalForce.add(childForce);
-                }
-            }
-            return totalForce;
-        }
-    }
+		if (isLeaf) {
+			if (particleInNode != null && particleInNode != p) {
+				double dx = particleInNode.x() - p.x();
+				double dy = particleInNode.y() - p.y();
+				double softenedDist = Math.sqrt(dx * dx + dy * dy + softening * softening);
+				totalPotential -= G * p.mass() * particleInNode.mass() / softenedDist;
+			}
+		} else {
+			double dx = centerOfMassX - p.x();
+			double dy = centerOfMassY - p.y();
+			double distance = Math.sqrt(dx * dx + dy * dy);
 
-    /**
-     * Calculates direct gravitational force between particle and a mass at given position
-     */
-    private Force calculateDirectForce(Particle particle, double massX, double massY, double mass) {
-        double dx = massX - particle.x();
-        double dy = massY - particle.y();
-        double distance = Math.sqrt(dx * dx + dy * dy);
+			if ((2 * size) / distance < theta) {
+				double softenedDist = Math.sqrt(distance * distance + softening * softening);
+				totalPotential -= G * p.mass() * totalMass / softenedDist;
+			} else {
+				for (Quadtree child : children) {
+					if (child.totalMass > 0) {
+						totalPotential += child.calculatePotential(p, G, theta, softening);
+					}
+				}
+			}
+		}
+		return totalPotential;
+	}
 
-        if (distance < 1e-10) {
-            return new Force(0, 0);
-        }
+	private Force calculateDirectForce(Particle p1, Particle p2, double G, double softening) {
+		return calculateDirectForce(p1, p2.mass(), p2.x(), p2.y(), G, softening);
+	}
 
-        // Apply gravitational softening
-        double softening = particle.softeningParameter();
-        double softenedDistance = Math.sqrt(distance * distance + softening * softening);
+	private Force calculateDirectForce(Particle p, double mass, double massX, double massY, double G, double softening) {
+		double dx = massX - p.x();
+		double dy = massY - p.y();
+		double distSq = dx * dx + dy * dy;
+		double dist = Math.sqrt(distSq);
 
-        // F = G * m1 * m2 / r^2, G = 4.302 × 10^-3 pc (M_sun)^-1 (km/s)^2
-        final double G = 4.302e-3;
-        double forceMagnitude = G * particle.mass() * mass / (softenedDistance * softenedDistance);
+		// Avoid self-interaction and division by zero
+		if (dist < 1e-9) {
+			return new Force(0, 0);
+		}
 
-        // Unit vector components
-        double ux = dx / distance;
-        double uy = dy / distance;
+		double softenedDistSq = distSq + softening * softening;
+		double forceMag = (G * p.mass() * mass) / softenedDistSq;
 
-        return new Force(forceMagnitude * ux, forceMagnitude * uy);
-    }
+		return new Force(forceMag * dx / dist, forceMag * dy / dist);
+	}
 
-    /**
-     * Returns all particles in this quadtree (for visualization)
-     */
-    public List<Particle> getAllParticles() {
-        List<Particle> allParticles = new ArrayList<>();
-        if (hasChildren) {
-            for (Quadtree child : children) {
-                if (child != null) {
-                    allParticles.addAll(child.getAllParticles());
-                }
-            }
-        } else {
-            allParticles.addAll(particles);
-        }
-        return allParticles;
-    }
+	/** Represents a 2D force vector. */
+	public record Force(double fx, double fy) {
+		public Force add(Force other) {
+			return new Force(fx + other.fx, fy + other.fy);
+		}
 
-    /**
-     * Returns the local density at this node for adaptive time-stepping
-     */
-    public double getDensity() {
-        double volume = 4.0 * size * size; // 2D area
-        return totalMass / volume;
-    }
-
-    /**
-     * Returns bounds for visualization
-     */
-    public record Bounds(double x, double y, double size) {}
-
-    /**
-     * Gets all node bounds for quadtree visualization overlay
-     */
-    public List<Bounds> getAllBounds() {
-        List<Bounds> bounds = new ArrayList<>();
-        bounds.add(new Bounds(x, y, size));
-
-        if (hasChildren) {
-            for (Quadtree child : children) {
-                if (child != null) {
-                    bounds.addAll(child.getAllBounds());
-                }
-            }
-        }
-        return bounds;
-    }
-
-    /**
-     * Represents a 2D force vector
-     */
-    public record Force(double fx, double fy) {
-        public Force add(Force other) {
-            return new Force(fx + other.fx, fy + other.fy);
-        }
-
-        public double magnitude() {
-            return Math.sqrt(fx * fx + fy * fy);
-        }
-    }
+		public double magnitude() {
+			return Math.sqrt(fx * fx + fy * fy);
+		}
+	}
 }
