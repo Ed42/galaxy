@@ -17,14 +17,6 @@
         .control-group h3 { margin: 0 0 10px 0; color: #4fc3f7; font-size: 16px; }
         .button-group { display: flex; gap: 10px; margin-bottom: 10px; }
         button { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; transition: background-color 0.3s; }
-        .btn-primary { background: #4fc3f7; color: #000; }
-        .btn-primary:hover { background: #29b6f6; }
-        .btn-danger { background: #f44336; color: #fff; }
-        .btn-danger:hover { background: #d32f2f; }
-        .btn-warning { background: #ff9800; color: #000; }
-        .btn-warning:hover { background: #f57c00; }
-        .btn-secondary { background: #666; color: #fff; }
-        .btn-secondary:hover { background: #555; }
         input[type="range"] { width: 100%; margin: 10px 0; }
         input[type="text"] { width: 90px; padding: 4px; border: 1px solid #666; border-radius: 4px; background: #333; color: #fff; font-size: 14px; }
         .checkbox-container { display: flex; align-items: center; gap: 8px; margin: 10px 0; }
@@ -34,31 +26,15 @@
         .stat-item { text-align: center; }
         .stat-label { font-size: 12px; color: #aaa; margin-bottom: 5px; }
         .stat-value { font-size: 18px; font-weight: bold; color: #4fc3f7; }
-        .zoom-controls { position: absolute; top: 10px; right: 10px; display: flex; flex-direction: column; gap: 5px; }
-        .zoom-btn { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; }
-        #fps-counter { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.7); padding: 5px 10px; border-radius: 4px; font-size: 12px; }
-        .legend { position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.7); padding: 10px; border-radius: 4px; font-size: 12px; }
-        .legend-item { display: flex; align-items: center; gap: 8px; margin: 2px 0; }
-        .legend-color { width: 12px; height: 12px; border-radius: 50%; }
     </style>
 </head>
 <body>
 <div class="container">
     <h1>Galaxy Simulation - Barnes-Hut N-Body Dynamics</h1>
     <div class="simulation-panel">
-        <div class="canvas-container">
+        <div class="canvas-container" style="position: relative;">
             <canvas id="galaxyCanvas" width="800" height="800"></canvas>
-            <div id="fps-counter">FPS: 0</div>
-            <div class="zoom-controls">
-                <button class="zoom-btn btn-secondary" onclick="zoomIn()">+</button>
-                <button class="zoom-btn btn-secondary" onclick="zoomOut()">-</button>
-                <button class="zoom-btn btn-secondary" onclick="resetZoom()">⌂</button>
-            </div>
-            <div class="legend">
-                <div class="legend-item"><div class="legend-color" style="background: #42a5f5;"></div><span>Disk Stars</span></div>
-                <div class="legend-item"><div class="legend-color" style="background: #ffca28;"></div><span>Bulge Stars</span></div>
-                <div class="legend-item"><div class="legend-color" style="background: #f44336;"></div><span>SMBH</span></div>
-            </div>
+            <div id="fps-counter" style="position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.7); padding: 5px 10px; border-radius: 4px; font-size: 12px;">FPS: 0</div>
         </div>
         <div class="controls-panel">
             <div class="control-group">
@@ -67,39 +43,25 @@
                     <button id="playBtn">▶ Start</button>
                     <button id="resetBtn">⟲ Reset</button>
                 </div>
-                <div class="button-group">
-                    <button id="fastForwardBtn">⏩ Fast Forward</button>
-                </div>
             </div>
             <div class="control-group">
                 <h3>Time Scale</h3>
                 <input type="range" id="timeScaleSlider" min="2" max="8" step="0.01" value="5">
-                <div class="input-group">
-                    <label for="timeScaleInput">Scale:</label>
-                    <input type="text" id="timeScaleInput" size="10">
-                    <span>yr/s</span>
-                </div>
+                <div class="input-group"><label>Scale:</label><input type="text" id="timeScaleInput" size="10"><span>yr/s</span></div>
             </div>
             <div class="control-group">
                 <h3>Particle Count</h3>
-                <input type="range" id="particleCountSlider" min="100" max="50000" step="100" value="1000">
-                <div class="input-group">
-                    <label for="particleCountInput">Count:</label>
-                    <input type="text" id="particleCountInput" size="10">
-                </div>
+                <input type="range" id="particleCountSlider" min="1000" max="50000" step="100" value="1000">
+                <div class="input-group"><label>Count:</label><input type="text" id="particleCountInput" size="10"></div>
             </div>
             <div class="control-group">
                 <h3>Physics Options</h3>
-                <div class="checkbox-container">
-                    <input type="checkbox" id="barPotentialCheck">
-                    <label for="barPotentialCheck">Bar Potential</label>
-                </div>
-                <div class="checkbox-container">
-                    <input type="checkbox" id="quadtreeOverlayCheck">
-                    <label for="quadtreeOverlayCheck">Quadtree Overlay</label>
-                </div>
+                <div class="checkbox-container"><input type="checkbox" id="quadtreeOverlayCheck"><label>Quadtree Overlay</label></div>
                 <input type="range" id="quadtreeDepthSlider" min="1" max="15" value="8">
                 <div>Depth: <span id="quadtreeDepthValue">8</span></div>
+                <div class="checkbox-container"><input type="checkbox" id="barPotentialCheck"><label>Bar Potential</label></div>
+                <input type="range" id="spiralArmSlider" min="1" max="5" step="1" value="2">
+                <div>Spiral Arms: <span id="spiralArmValue">2</span></div>
             </div>
         </div>
     </div>
@@ -116,23 +78,20 @@
     </div>
 </div>
 <script>
-    let canvas, ctx, isRunning = false, fastForward = false, showQuadtree = false;
-    let zoom = 1.0, offsetX = 0, offsetY = 0;
-    let isDragging = false, lastMouseX, lastMouseY;
-    let lastFrameTime = 0;
+    let canvas, ctx, isRunning = false, showQuadtree = false, zoom = 1.0, offsetX = 0, offsetY = 0, isDragging = false, lastMouseX, lastMouseY, lastFrameTime = 0;
     let simulationState = { particles: [], currentTime: 0, energy: 0, energyDrift: 0, particleCount: 0, avgVelocity: 0, avgDistanceToCenter: 0 };
 
-    window.onload = function() {
+    window.onload = () => {
         canvas = document.getElementById('galaxyCanvas');
         ctx = canvas.getContext('2d');
         setupEventListeners();
         startAnimationLoop();
         setInterval(updateSimulationData, 200);
         setInterval(updateUI, 1000);
+        updateQuadtreeSettings();
     };
 
     function setupEventListeners() {
-        // Canvas interactions
         canvas.addEventListener('mousedown', e => { isDragging = true; lastMouseX = e.clientX; lastMouseY = e.clientY; });
         canvas.addEventListener('mouseup', () => isDragging = false);
         canvas.addEventListener('mouseleave', () => isDragging = false);
@@ -143,81 +102,63 @@
                 lastMouseX = e.clientX; lastMouseY = e.clientY;
             }
         });
-        canvas.addEventListener('wheel', e => {
-            e.preventDefault();
-            zoom *= e.deltaY > 0 ? 0.9 : 1.1;
-            zoom = Math.max(0.1, Math.min(20, zoom));
+        canvas.addEventListener('wheel', e => { e.preventDefault(); zoom *= e.deltaY > 0 ? 0.9 : 1.1; zoom = Math.max(0.1, Math.min(20, zoom)); });
+        document.getElementById('playBtn').addEventListener('click', toggleSimulation);
+        document.getElementById('resetBtn').addEventListener('click', () => postRequest('/api/reset', {}));
+
+        const timeSlider = document.getElementById('timeScaleSlider'), timeInput = document.getElementById('timeScaleInput');
+        timeInput.value = Math.pow(10, parseFloat(timeSlider.value)).toExponential(1);
+        timeSlider.addEventListener('input', () => timeInput.value = Math.pow(10, parseFloat(timeSlider.value)).toExponential(1));
+        timeSlider.addEventListener('change', () => postRequest('/api/timeScale', { timeScale: Math.pow(10, parseFloat(timeSlider.value)) }));
+        timeInput.addEventListener('change', () => {
+            const v = parseFloat(timeInput.value);
+            if (!isNaN(v) && v > 0) {
+                postRequest('/api/timeScale', { timeScale: v });
+                timeSlider.value = Math.log10(v);
+            }
+            timeInput.value = Math.pow(10, parseFloat(timeSlider.value)).toExponential(1);
         });
 
-        // --- UI Control Listeners ---
-        document.getElementById('playBtn').addEventListener('click', toggleSimulation);
-        document.getElementById('resetBtn').addEventListener('click', resetSimulation);
-        document.getElementById('fastForwardBtn').addEventListener('click', toggleFastForward);
-        document.getElementById('barPotentialCheck').addEventListener('change', toggleBarPotential);
+        const countSlider = document.getElementById('particleCountSlider'), countInput = document.getElementById('particleCountInput');
+        countInput.value = countSlider.value;
+        countSlider.addEventListener('input', () => countInput.value = countSlider.value);
+        countSlider.addEventListener('change', () => postRequest('/api/particleCount', { count: parseInt(countSlider.value, 10) }));
+        countInput.addEventListener('change', () => {
+            let v = parseInt(countInput.value, 10);
+            v = isNaN(v) ? parseInt(countSlider.value, 10) : Math.max(parseInt(countSlider.min, 10), Math.min(v, parseInt(countSlider.max, 10)));
+            countInput.value = v;
+            countSlider.value = v;
+            postRequest('/api/particleCount', { count: v });
+        });
+
         document.getElementById('quadtreeOverlayCheck').addEventListener('change', updateQuadtreeSettings);
         document.getElementById('quadtreeDepthSlider').addEventListener('change', updateQuadtreeSettings);
+        document.getElementById('barPotentialCheck').addEventListener('change', () => postRequest('/api/barPotential', { enabled: document.getElementById('barPotentialCheck').checked }));
 
-        // --- Time Scale Controls (Slider and Text Input) ---
-        const timeScaleSlider = document.getElementById('timeScaleSlider');
-        const timeScaleInput = document.getElementById('timeScaleInput');
-        timeScaleInput.value = Math.pow(10, parseFloat(timeScaleSlider.value)).toExponential(1);
-
-        timeScaleSlider.addEventListener('input', () => {
-            timeScaleInput.value = Math.pow(10, parseFloat(timeScaleSlider.value)).toExponential(1);
-        });
-        timeScaleSlider.addEventListener('change', () => {
-            postRequest('/api/timeScale', { timeScale: Math.pow(10, parseFloat(timeScaleSlider.value)) });
-        });
-        timeScaleInput.addEventListener('change', () => {
-            const value = parseFloat(timeScaleInput.value);
-            if (!isNaN(value) && value > 0) {
-                postRequest('/api/timeScale', { timeScale: value });
-                timeScaleSlider.value = Math.log10(value);
-            }
-            timeScaleInput.value = Math.pow(10, parseFloat(timeScaleSlider.value)).toExponential(1);
-        });
-
-        // --- Particle Count Controls (Slider and Text Input) ---
-        const particleCountSlider = document.getElementById('particleCountSlider');
-        const particleCountInput = document.getElementById('particleCountInput');
-        particleCountInput.value = particleCountSlider.value;
-
-        particleCountSlider.addEventListener('input', () => {
-            particleCountInput.value = particleCountSlider.value;
-        });
-        particleCountSlider.addEventListener('change', () => {
-            postRequest('/api/particleCount', { count: parseInt(particleCountSlider.value, 10) });
-        });
-        particleCountInput.addEventListener('change', () => {
-            let value = parseInt(particleCountInput.value, 10);
-            if (isNaN(value)) {
-                value = parseInt(particleCountSlider.value, 10);
-            }
-            const min = parseInt(particleCountSlider.min, 10);
-            const max = parseInt(particleCountSlider.max, 10);
-            value = Math.max(min, Math.min(value, max));
-            particleCountInput.value = value;
-            particleCountSlider.value = value;
-            postRequest('/api/particleCount', { count: value });
+        const armSlider = document.getElementById('spiralArmSlider');
+        armSlider.addEventListener('change', () => {
+            const arms = parseInt(armSlider.value, 10);
+            document.getElementById('spiralArmValue').textContent = arms;
+            postRequest('/api/spiralArms', { arms: arms });
         });
     }
 
     function startAnimationLoop() {
-        function animate(currentTime) {
-            if (lastFrameTime > 0) document.getElementById('fps-counter').textContent = `FPS: ${Math.round(1000 / (currentTime - lastFrameTime))}`;
-            lastFrameTime = currentTime;
+        const animate = t => {
+            if (lastFrameTime > 0) document.getElementById('fps-counter').textContent = `FPS: ${Math.round(1000 / (t - lastFrameTime))}`;
+            lastFrameTime = t;
             render();
             requestAnimationFrame(animate);
-        }
+        };
         requestAnimationFrame(animate);
     }
 
     async function updateSimulationData() {
         try {
-            const response = await fetch('/api/state');
-            simulationState = await response.json();
-            isRunning = simulationState.isRunning || false;
-        } catch (error) { console.error('Error fetching state:', error); }
+            const res = await fetch('/api/state');
+            simulationState = await res.json();
+            isRunning = simulationState.isRunning;
+        } catch (e) { console.error('Error fetching state:', e); }
     }
 
     function render() {
@@ -226,20 +167,15 @@
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         if (simulationState && simulationState.particles) {
             renderParticles(simulationState.particles);
-            if (showQuadtree && simulationState.quadtreeBounds) {
-                renderQuadtree(simulationState.quadtreeBounds);
-            }
+            if (showQuadtree && simulationState.quadtreeBounds) renderQuadtree(simulationState.quadtreeBounds);
         }
-        renderSMBH();
     }
 
     function renderParticles(particles) {
-        const scale = (canvas.width / 30000) * zoom;
-        const centerX = canvas.width / 2, centerY = canvas.height / 2;
+        const scale = (canvas.width / 30000) * zoom, centerX = canvas.width / 2, centerY = canvas.height / 2;
         ctx.globalAlpha = 0.8;
         particles.forEach(p => {
-            const screenX = centerX + (p.x - offsetX) * scale;
-            const screenY = centerY - (p.y - offsetY) * scale;
+            const screenX = centerX + (p.x - offsetX) * scale, screenY = centerY - (p.y - offsetY) * scale;
             if (screenX < -5 || screenX > canvas.width + 5 || screenY < -5 || screenY > canvas.height + 5) return;
             ctx.fillStyle = p.type === 'GIANT' ? '#ffca28' : '#42a5f5';
             ctx.beginPath();
@@ -249,23 +185,12 @@
         ctx.globalAlpha = 1.0;
     }
 
-    function renderSMBH() {
-        const scale = (canvas.width / 30000) * zoom;
-        ctx.fillStyle = '#f44336';
-        ctx.beginPath();
-        ctx.arc(canvas.width / 2 - offsetX * scale, canvas.height / 2 + offsetY * scale, Math.max(2, 4 * zoom), 0, 2 * Math.PI);
-        ctx.fill();
-    }
-
     function renderQuadtree(bounds) {
-        const scale = (canvas.width / 30000) * zoom;
-        const centerX = canvas.width / 2, centerY = canvas.height / 2;
+        const scale = (canvas.width / 30000) * zoom, centerX = canvas.width / 2, centerY = canvas.height / 2;
         ctx.strokeStyle = 'rgba(0, 255, 0, 0.3)';
         ctx.lineWidth = 1;
         bounds.forEach(b => {
-            const w = b.size * 2 * scale;
-            const x = centerX + (b.x - b.size - offsetX) * scale;
-            const y = centerY - (b.y + b.size - offsetY) * scale;
+            const w = b.size * 2 * scale, x = centerX + (b.x - b.size - offsetX) * scale, y = centerY - (b.y + b.size - offsetY) * scale;
             ctx.strokeRect(x, y, w, w);
         });
     }
@@ -285,32 +210,19 @@
     }
 
     async function toggleSimulation() {
-        await postRequest(isRunning ? '/api/pause' : '/api/start', {});
         const btn = document.getElementById('playBtn');
+        await postRequest(isRunning ? '/api/pause' : '/api/start', {});
         isRunning = !isRunning;
         btn.textContent = isRunning ? '⏸ Pause' : '▶ Start';
-        btn.className = isRunning ? 'btn-warning' : 'btn-primary';
     }
-    async function resetSimulation() { await postRequest('/api/reset', {}); }
-    async function toggleFastForward() {
-        fastForward = !document.getElementById('fastForwardBtn').classList.contains('btn-danger');
-        await postRequest('/api/fastForward', { enabled: fastForward });
-        document.getElementById('fastForwardBtn').className = fastForward ? 'btn-danger' : 'btn-warning';
-    }
-    async function toggleBarPotential() { await postRequest('/api/barPotential', { enabled: document.getElementById('barPotentialCheck').checked }); }
 
     async function updateQuadtreeSettings() {
-        const checkbox = document.getElementById('quadtreeOverlayCheck');
-        const slider = document.getElementById('quadtreeDepthSlider');
+        const checkbox = document.getElementById('quadtreeOverlayCheck'), slider = document.getElementById('quadtreeDepthSlider');
         const depth = parseInt(slider.value, 10);
         showQuadtree = checkbox.checked;
         document.getElementById('quadtreeDepthValue').textContent = depth;
         await postRequest('/api/quadtree', { enabled: showQuadtree, depth: depth });
     }
-
-    function zoomIn() { zoom *= 1.5; }
-    function zoomOut() { zoom /= 1.5; }
-    function resetZoom() { zoom = 1.0; offsetX = 0; offsetY = 0; }
 </script>
 </body>
 </html>

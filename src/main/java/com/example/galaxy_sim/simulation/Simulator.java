@@ -5,7 +5,6 @@ import com.example.galaxy_sim.physics.BackgroundPotential;
 import com.example.galaxy_sim.physics.Quadtree;
 import com.example.galaxy_sim.physics.YoshidaIntegrator;
 import org.springframework.stereotype.Component;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
@@ -22,13 +21,10 @@ public class Simulator {
 	private boolean fastForward = false;
 	private int particleCount = 1000;
 	private double timeScale = 100000.0;
-
 	private final YoshidaIntegrator integrator;
 	private final BackgroundPotential backgroundPotential;
-
 	private boolean quadtreeOverlayEnabled = false;
 	private int quadtreeMaxDepth = 8;
-
 	private static final double G = 4.30091e-3;
 	private static final double THETA = 0.7;
 	private static final double SOFTENING = 15.0;
@@ -96,24 +92,16 @@ public class Simulator {
 	public void setFastForward(boolean ff) { this.fastForward = ff; }
 	public void setBarEnabled(boolean enabled) { this.backgroundPotential.setBarEnabled(enabled); }
 	public void setParticleCount(int count) { this.particleCount = count; reset(); }
-
 	public boolean isQuadtreeOverlayEnabled() { return quadtreeOverlayEnabled; }
 	public void setQuadtreeOverlayEnabled(boolean enabled) { this.quadtreeOverlayEnabled = enabled; }
 	public void setQuadtreeMaxDepth(int depth) { this.quadtreeMaxDepth = depth; }
+	public void setNumberOfArms(int n) { this.backgroundPotential.setNumberOfArms(n); }
 
-	/**
-	 * Gets the quadtree boundaries for visualization, filtering out distant cells
-	 * to keep the overlay focused on the main galaxy.
-	 */
 	public List<Quadtree.Bounds> getQuadtreeBounds() {
 		Quadtree tree = integrator.getLastBuiltTree();
 		if (tree != null) {
-			List<Quadtree.Bounds> allBounds = tree.getBounds(this.quadtreeMaxDepth);
-			// ** THE FIX IS HERE **
-			// Filter the bounds to only show those near the main galaxy, preventing
-			// the view from being dominated by ejected particles.
-			final double viewRadius = 30000; // 30 kpc view distance
-			return allBounds.stream()
+			final double viewRadius = 30000;
+			return tree.getBounds(this.quadtreeMaxDepth).stream()
 				.filter(b -> Math.abs(b.x()) < viewRadius && Math.abs(b.y()) < viewRadius)
 				.collect(Collectors.toList());
 		}

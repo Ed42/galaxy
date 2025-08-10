@@ -8,7 +8,7 @@ import com.example.galaxy_sim.model.Particle;
  */
 public class BackgroundPotential {
 	// Physical Constants
-	private static final double G = 4.30091e-3; // pc*(km/s)^2 / M_solar
+	private static final double G = 4.30091e-3;
 
 	// Galaxy Model Parameters
 	private static final double M_DISK = 1.0e11;
@@ -20,43 +20,33 @@ public class BackgroundPotential {
 	private static final double M_SMBH = 4.0e6;
 	private static final double EPSILON_SMBH = 1.0;
 
-	// Logarithmic Spiral Arms with a fixed pattern speed
+	// Spiral Arm Parameters
 	private static final double K_SPIRAL = 2.0 / Math.tan(12.0 * Math.PI / 180.0);
-	private static final double N_SPIRAL = 2.0;
 	private static final double AMP_SPIRAL = 0.1;
-	// Pattern speed in km/s/pc. 25 km/s/kpc is a typical value.
 	private static final double OMEGA_PATTERN = 0.025;
+
+	// ** THE FIX IS HERE **
+	// The number of spiral arms is now a configurable field instead of a constant.
+	private double nSpiral = 2.0;
 
 	private boolean barEnabled = false;
 
-	/**
-	 * Calculates the total background force on a particle at a specific time.
-	 * @param p The particle to calculate the force for.
-	 * @param currentTimeMyr The current simulation time in Mega-years.
-	 * @return The total force vector.
-	 */
 	public Quadtree.Force calculateBackgroundForce(Particle p, double currentTimeMyr) {
 		Quadtree.Force axisymmetricForce = calculateAxisymmetricForce(p);
 		Quadtree.Force spiralForce = calculateSpiralArmForce(p, currentTimeMyr);
-
 		return axisymmetricForce.add(spiralForce);
 	}
 
 	public Quadtree.Force calculateAxisymmetricForce(Particle p) {
 		double r = Math.sqrt(p.x() * p.x() + p.y() * p.y());
 		if (r < 1e-9) return new Quadtree.Force(0, 0);
-
-		double ux = p.x() / r;
-		double uy = p.y() / r;
-
+		double ux = p.x() / r, uy = p.y() / r;
 		double accel_disk = diskAcceleration(r);
 		double accel_bulge = bulgeAcceleration(r);
 		double accel_halo = haloAcceleration(r);
 		double accel_smbh = smbhAcceleration(r);
-
 		double total_accel_mag = -(accel_disk + accel_bulge + accel_halo + accel_smbh);
 		double force_mag = total_accel_mag * p.mass();
-
 		return new Quadtree.Force(force_mag * ux, force_mag * uy);
 	}
 
@@ -81,27 +71,25 @@ public class BackgroundPotential {
 	private Quadtree.Force calculateSpiralArmForce(Particle p, double currentTimeMyr) {
 		double r = Math.sqrt(p.x() * p.x() + p.y() * p.y());
 		if (r < 1e-9) return new Quadtree.Force(0, 0);
-
 		double theta = Math.atan2(p.y(), p.x());
-
-		// Convert time to the simulation's internal time unit for the rotation calculation
 		double time_sys = currentTimeMyr * 1.0227;
-
 		double A = AMP_SPIRAL * diskAcceleration(r) * r;
-
-		// The phase now rotates with time at the pattern speed
-		double phase = N_SPIRAL * (theta - OMEGA_PATTERN * time_sys) - K_SPIRAL * Math.log(r / A_DISK);
-
+		// Use the nSpiral field here
+		double phase = this.nSpiral * (theta - OMEGA_PATTERN * time_sys) - K_SPIRAL * Math.log(r / A_DISK);
 		double Fr = -A * (K_SPIRAL / r) * Math.sin(phase);
-		double F_theta = A * (N_SPIRAL / r) * Math.sin(phase);
-
+		double F_theta = A * (this.nSpiral / r) * Math.sin(phase);
 		double fx = Fr * Math.cos(theta) - F_theta * Math.sin(theta);
 		double fy = Fr * Math.sin(theta) + F_theta * Math.cos(theta);
-
 		return new Quadtree.Force(fx * p.mass(), fy * p.mass());
 	}
 
 	public void setBarEnabled(boolean enabled) {
 		this.barEnabled = enabled;
+	}
+
+	public void setNumberOfArms(int n) {
+		if (n > 0) {
+			this.nSpiral = n;
+		}
 	}
 }
