@@ -4,7 +4,7 @@ import com.example.galaxy_sim.model.Particle;
 
 /**
  * Calculates the total background gravitational potential of the galaxy.
- * This includes components for the disk, bulge, halo, and spiral arms.
+ * This includes components for the disk, bulge, halo, SMBH, and spiral arms.
  */
 public class BackgroundPotential {
 	// Physical Constants
@@ -23,6 +23,10 @@ public class BackgroundPotential {
 	// Isothermal Halo
 	private static final double V_HALO = 200.0; // km/s
 
+	// Supermassive Black Hole (SMBH)
+	private static final double M_SMBH = 4.0e6;  // Solar masses
+	private static final double EPSILON_SMBH = 1.0; // pc, specific softening for the SMBH
+
 	// Logarithmic Spiral Arms
 	private static final double K_SPIRAL = 2.0 / Math.tan(12.0 * Math.PI / 180.0); // For ~12 degree pitch angle
 	private static final double N_SPIRAL = 2.0; // Number of arms
@@ -40,6 +44,10 @@ public class BackgroundPotential {
 		return axisymmetricForce.add(spiralForce);
 	}
 
+	/**
+	 * Calculates only the radially symmetric components of the background force.
+	 * This now includes the SMBH.
+	 */
 	public Quadtree.Force calculateAxisymmetricForce(Particle p) {
 		double r = Math.sqrt(p.x() * p.x() + p.y() * p.y());
 		if (r < 1e-9) return new Quadtree.Force(0, 0);
@@ -52,16 +60,17 @@ public class BackgroundPotential {
 		double accel_disk = diskAcceleration(r);
 		double accel_bulge = bulgeAcceleration(r);
 		double accel_halo = haloAcceleration(r);
+		double accel_smbh = smbhAcceleration(r);
 
-		// ** THE FIX IS HERE **
 		// The total acceleration must be negative to be attractive (pointing towards the center).
-		double total_accel_mag = -(accel_disk + accel_bulge + accel_halo);
+		double total_accel_mag = -(accel_disk + accel_bulge + accel_halo + accel_smbh);
 
 		// Convert total radial acceleration to force vector
 		double force_mag = total_accel_mag * p.mass();
 
 		return new Quadtree.Force(force_mag * ux, force_mag * uy);
 	}
+
 	private double diskAcceleration(double r) {
 		// Force from a Miyamoto-Nagai disk potential in the plane (z=0)
 		double term = A_DISK + B_DISK;
@@ -77,6 +86,11 @@ public class BackgroundPotential {
 	private double haloAcceleration(double r) {
 		// Force from an isothermal halo potential
 		return (V_HALO * V_HALO) / r;
+	}
+
+	private double smbhAcceleration(double r) {
+		// Force from a softened point mass (SMBH)
+		return (G * M_SMBH) / (r * r + EPSILON_SMBH * EPSILON_SMBH);
 	}
 
 	private Quadtree.Force calculateSpiralArmForce(Particle p) {

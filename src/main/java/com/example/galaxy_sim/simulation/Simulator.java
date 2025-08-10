@@ -5,7 +5,6 @@ import com.example.galaxy_sim.physics.BackgroundPotential;
 import com.example.galaxy_sim.physics.Quadtree;
 import com.example.galaxy_sim.physics.YoshidaIntegrator;
 import org.springframework.stereotype.Component;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
@@ -72,42 +71,63 @@ public class Simulator {
 		List<Particle> newParticles = new ArrayList<>();
 		Random rand = new Random();
 
-		double diskRadius = 15000; // Generate particles out to this radius
+		double diskRadius = 15000.0;
+		double bulgeRadius = 3000.0;
 
-		for (int i = 0; i < count; i++) {
-			double r = diskRadius * Math.sqrt(rand.nextDouble());
+		// Increase the proportion of particles in the bulge for a more prominent core.
+		int bulgeCount = count / 3;
+		int diskCount = count - bulgeCount;
+
+		// Initialize bulge particles, concentrated in the center
+		for (int i = 0; i < bulgeCount; i++) {
+			double r = bulgeRadius * Math.pow(rand.nextDouble(), 0.5); // Concentrate towards center
 			double theta = 2 * Math.PI * rand.nextDouble();
 			double x = r * Math.cos(theta);
 			double y = r * Math.sin(theta);
 
-			// Calculate force using only the stable, axisymmetric potential to get a stable circular orbit.
-			Quadtree.Force force = backgroundPotential.calculateAxisymmetricForce(new Particle(x, y, 0, 0, 1e6, Particle.StellarType.MAIN_SEQUENCE, 0, 0, false, r));
-
-			// ** THE FINAL FIX IS HERE **
-			// The speed of a circular orbit depends on the MAGNITUDE of the acceleration, which is always positive.
-			// a = F/m
-			double acceleration_mag = force.magnitude() / 1e6;
-
-			// v = sqrt(a * r) for stable circular orbit
+			Quadtree.Force force = backgroundPotential.calculateAxisymmetricForce(new Particle(x, y, 0, 0, 1.2e6, Particle.StellarType.GIANT, 0, 0, false, r));
+			double acceleration_mag = force.magnitude() / 1.2e6;
 			double v_circ = Math.sqrt(acceleration_mag * r);
 
-			// Convert the speed to a velocity vector
 			double vx = -v_circ * Math.sin(theta);
 			double vy = v_circ * Math.cos(theta);
 
-			// Add random velocity dispersion for realism
-			vx += (rand.nextDouble() - 0.5) * 10.0;
+			vx += (rand.nextDouble() - 0.5) * 10.0; // Higher velocity dispersion in bulge
 			vy += (rand.nextDouble() - 0.5) * 10.0;
 
-			Particle.StellarType type = (r < 3000) ? Particle.StellarType.GIANT : Particle.StellarType.MAIN_SEQUENCE;
-			double mass = (type == Particle.StellarType.GIANT) ? 1.2e6 : 1e6;
-			double age = (type == Particle.StellarType.GIANT) ? 5.0 + rand.nextDouble() * 5.0 : rand.nextDouble() * 5.0;
-			double metallicity = (type == Particle.StellarType.GIANT) ? 0.02 : 0.01;
+			double age = 5.0 + rand.nextDouble() * 5.0;
+			double metallicity = 0.02;
 
-			newParticles.add(new Particle(x, y, vx, vy, mass, type, age, metallicity, false, r));
+			newParticles.add(new Particle(x, y, vx, vy, 1.2e6, Particle.StellarType.GIANT, age, metallicity, false, r));
 		}
+
+		// Initialize disk particles, outside the bulge
+		for (int i = 0; i < diskCount; i++) {
+			double r = bulgeRadius + (diskRadius - bulgeRadius) * Math.sqrt(rand.nextDouble()); // Start from bulge edge
+
+			double theta = 2 * Math.PI * rand.nextDouble();
+			double x = r * Math.cos(theta);
+			double y = r * Math.sin(theta);
+
+			Quadtree.Force force = backgroundPotential.calculateAxisymmetricForce(new Particle(x, y, 0, 0, 1e6, Particle.StellarType.MAIN_SEQUENCE, 0, 0, false, r));
+			double acceleration_mag = force.magnitude() / 1e6;
+			double v_circ = Math.sqrt(acceleration_mag * r);
+
+			double vx = -v_circ * Math.sin(theta);
+			double vy = v_circ * Math.cos(theta);
+
+			vx += (rand.nextDouble() - 0.5) * 5.0; // Lower velocity dispersion in disk
+			vy += (rand.nextDouble() - 0.5) * 5.0;
+
+			double age = rand.nextDouble() * 5.0;
+			double metallicity = 0.01;
+
+			newParticles.add(new Particle(x, y, vx, vy, 1e6, Particle.StellarType.MAIN_SEQUENCE, age, metallicity, false, r));
+		}
+
 		return newParticles;
 	}
+
 	public double getEnergyDrift() {
 		if (initialEnergy == 0) return 0;
 		double currentEnergy = this.integrator.calculateTotalEnergy(this.particles);
