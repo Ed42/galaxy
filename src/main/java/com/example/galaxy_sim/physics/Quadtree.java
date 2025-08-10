@@ -14,9 +14,11 @@ public class Quadtree {
 	private double centerOfMassY = 0;
 	private Particle particleInNode; // If it's a leaf node with one particle
 
-	// Child quadrants: NW, NE, SW, SE
 	private Quadtree[] children = new Quadtree[4];
 	private boolean isLeaf = true;
+
+	/** Represents the boundary of a quadtree node for visualization. */
+	public record Bounds(double x, double y, double size) {}
 
 	public Quadtree(double centerX, double centerY, double halfSize) {
 		this.x = centerX;
@@ -24,34 +26,22 @@ public class Quadtree {
 		this.size = halfSize;
 	}
 
-	/**
-	 * Inserts a particle into the quadtree.
-	 */
 	public void insert(Particle p) {
-		if (!contains(p.x(), p.y())) {
-			return;
-		}
-
+		if (!contains(p.x(), p.y())) return;
 		if (isLeaf) {
 			if (particleInNode == null) {
-				// This leaf is empty, store the particle here.
 				particleInNode = p;
 				totalMass = p.mass();
 				centerOfMassX = p.x();
 				centerOfMassY = p.y();
 				return;
 			} else {
-				// This leaf is occupied, we must subdivide.
 				subdivide();
-				// Re-insert the original particle into the correct child.
 				addToChild(particleInNode);
-				particleInNode = null; // No longer a leaf with a single particle.
+				particleInNode = null;
 			}
 		}
-
-		// Add the new particle to the correct child.
 		addToChild(p);
-		// Update this node's center of mass.
 		updateCenterOfMass(p);
 	}
 
@@ -83,12 +73,8 @@ public class Quadtree {
 		return px >= x - size && px <= x + size && py >= y - size && py <= y + size;
 	}
 
-	/**
-	 * Calculates gravitational force on a particle using Barnes-Hut approximation.
-	 */
 	public Force calculateForce(Particle p, double G, double theta, double softening) {
 		Force totalForce = new Force(0, 0);
-
 		if (isLeaf) {
 			if (particleInNode != null && particleInNode != p) {
 				totalForce = totalForce.add(calculateDirectForce(p, particleInNode, G, softening));
@@ -97,12 +83,9 @@ public class Quadtree {
 			double dx = centerOfMassX - p.x();
 			double dy = centerOfMassY - p.y();
 			double distance = Math.sqrt(dx * dx + dy * dy);
-
-			// If node is far enough away, approximate it as a single mass.
 			if ((2 * size) / distance < theta) {
 				totalForce = totalForce.add(calculateDirectForce(p, totalMass, centerOfMassX, centerOfMassY, G, softening));
 			} else {
-				// Otherwise, recurse into children.
 				for (Quadtree child : children) {
 					if (child.totalMass > 0) {
 						totalForce = totalForce.add(child.calculateForce(p, G, theta, softening));
@@ -113,12 +96,8 @@ public class Quadtree {
 		return totalForce;
 	}
 
-	/**
-	 * Calculates potential energy on a particle.
-	 */
 	public double calculatePotential(Particle p, double G, double theta, double softening) {
 		double totalPotential = 0.0;
-
 		if (isLeaf) {
 			if (particleInNode != null && particleInNode != p) {
 				double dx = particleInNode.x() - p.x();
@@ -130,7 +109,6 @@ public class Quadtree {
 			double dx = centerOfMassX - p.x();
 			double dy = centerOfMassY - p.y();
 			double distance = Math.sqrt(dx * dx + dy * dy);
-
 			if ((2 * size) / distance < theta) {
 				double softenedDist = Math.sqrt(distance * distance + softening * softening);
 				totalPotential -= G * p.mass() * totalMass / softenedDist;
@@ -154,24 +132,37 @@ public class Quadtree {
 		double dy = massY - p.y();
 		double distSq = dx * dx + dy * dy;
 		double dist = Math.sqrt(distSq);
-
-		// Avoid self-interaction and division by zero
-		if (dist < 1e-9) {
-			return new Force(0, 0);
-		}
-
+		if (dist < 1e-9) return new Force(0, 0);
 		double softenedDistSq = distSq + softening * softening;
 		double forceMag = (G * p.mass() * mass) / softenedDistSq;
-
 		return new Force(forceMag * dx / dist, forceMag * dy / dist);
 	}
 
-	/** Represents a 2D force vector. */
+	/**
+	 * Recursively collects the boundaries of all quadtree nodes up to a max depth.
+	 */
+	public List<Bounds> getBounds(int maxDepth) {
+		List<Bounds> bounds = new ArrayList<>();
+		getBoundsRecursive(bounds, 0, maxDepth);
+		return bounds;
+	}
+
+	private void getBoundsRecursive(List<Bounds> bounds, int currentDepth, int maxDepth) {
+		if (currentDepth > maxDepth) {
+			return;
+		}
+		bounds.add(new Bounds(this.x, this.y, this.size));
+		if (!isLeaf) {
+			for (Quadtree child : children) {
+				child.getBoundsRecursive(bounds, currentDepth + 1, maxDepth);
+			}
+		}
+	}
+
 	public record Force(double fx, double fy) {
 		public Force add(Force other) {
 			return new Force(fx + other.fx, fy + other.fy);
 		}
-
 		public double magnitude() {
 			return Math.sqrt(fx * fx + fy * fy);
 		}

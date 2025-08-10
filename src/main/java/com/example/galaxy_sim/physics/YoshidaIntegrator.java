@@ -20,6 +20,7 @@ public class YoshidaIntegrator {
 
 	private final BackgroundPotential backgroundPotential;
 	private final double G, THETA, SOFTENING;
+	private Quadtree lastBuiltTree; // Store the last tree for visualization
 
 	public YoshidaIntegrator(BackgroundPotential backgroundPotential, double G, double theta, double softening) {
 		this.backgroundPotential = backgroundPotential;
@@ -28,25 +29,16 @@ public class YoshidaIntegrator {
 		this.SOFTENING = softening;
 	}
 
-	/**
-	 * Advances particles by one time step.
-	 * @param dt The time step in Mega-years (Myr).
-	 * @param currentTimeMyr The current simulation time in Mega-years.
-	 */
 	public List<Particle> step(List<Particle> particles, double dt, double currentTimeMyr) {
 		double dt_sys = dt * MYR_TO_SYSTEM_TIME;
-
 		List<Particle> p_state = new ArrayList<>(particles);
 
 		p_state = updatePositions(p_state, C1 * dt_sys);
 		p_state = updateVelocities(p_state, D1 * dt_sys, currentTimeMyr + C1 * dt);
-
 		p_state = updatePositions(p_state, C2 * dt_sys);
 		p_state = updateVelocities(p_state, D2 * dt_sys, currentTimeMyr + C2 * dt);
-
 		p_state = updatePositions(p_state, C3 * dt_sys);
 		p_state = updateVelocities(p_state, D3 * dt_sys, currentTimeMyr + C3 * dt);
-
 		p_state = updatePositions(p_state, C4 * dt_sys);
 
 		return p_state;
@@ -64,22 +56,18 @@ public class YoshidaIntegrator {
 
 	private List<Particle> updateVelocities(List<Particle> particles, double dt_sys, double timeForForceCalc) {
 		List<Particle> updated = new ArrayList<>();
-		Quadtree quadtree = buildQuadtree(particles);
+		this.lastBuiltTree = buildQuadtree(particles); // Update the stored tree
 
 		for (Particle p : particles) {
-			Force particleForce = quadtree.calculateForce(p, G, THETA, SOFTENING);
-			// The background force now depends on time for the rotating pattern
+			Force particleForce = lastBuiltTree.calculateForce(p, G, THETA, SOFTENING);
 			Force backgroundForce = backgroundPotential.calculateBackgroundForce(p, timeForForceCalc);
 			Force totalForce = particleForce.add(backgroundForce);
 
 			double ax = totalForce.fx() / p.mass();
 			double ay = totalForce.fy() / p.mass();
-
 			double newVx = p.vx() + ax * dt_sys;
 			double newVy = p.vy() + ay * dt_sys;
-
 			double distToSMBH = Math.sqrt(p.x() * p.x() + p.y() * p.y());
-
 			updated.add(new Particle(p.x(), p.y(), newVx, newVy, p.mass(), p.stellarType(), p.age(), p.metallicity(), p.habitable(), distToSMBH));
 		}
 		return updated;
@@ -104,14 +92,18 @@ public class YoshidaIntegrator {
 		return tree;
 	}
 
+	public Quadtree getLastBuiltTree() {
+		return this.lastBuiltTree;
+	}
+
 	public double calculateTotalEnergy(List<Particle> particles) {
 		if (particles == null || particles.isEmpty()) return 0.0;
 		double kineticEnergy = 0.0;
 		double potentialEnergy = 0.0;
-		Quadtree tree = buildQuadtree(particles);
+		this.lastBuiltTree = buildQuadtree(particles);
 		for (Particle p : particles) {
 			kineticEnergy += 0.5 * p.mass() * (p.vx() * p.vx() + p.vy() * p.vy());
-			potentialEnergy += tree.calculatePotential(p, G, THETA, SOFTENING);
+			potentialEnergy += lastBuiltTree.calculatePotential(p, G, THETA, SOFTENING);
 		}
 		return kineticEnergy + (potentialEnergy / 2.0);
 	}
