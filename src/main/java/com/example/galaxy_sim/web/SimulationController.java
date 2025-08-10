@@ -258,34 +258,41 @@ public class SimulationController {
     }
 
 	/**
-	 * Main simulation loop
+	 * Main simulation loop.
+	 * This loop now includes sub-stepping to ensure numerical stability.
 	 */
 	private void runSimulation() {
-		long lastRealTime = System.nanoTime(); // Use nanoTime for better precision
+		long lastRealTime = System.nanoTime();
+		// Define a maximum time step for the integrator to remain stable, in years.
+		final double MAX_STABLE_DT_YEARS = 100.0;
 
 		while (isRunning && !Thread.currentThread().isInterrupted()) {
 			try {
 				long currentRealTime = System.nanoTime();
-				// Real time elapsed in seconds
 				double realWorldDeltaTime = (currentRealTime - lastRealTime) / 1_000_000_000.0;
 				lastRealTime = currentRealTime;
 
-				// Clamp delta time to avoid huge simulation jumps if the thread was paused
+				// Avoid huge jumps if the thread was paused (e.g., during debugging)
 				if (realWorldDeltaTime > 0.1) {
 					realWorldDeltaTime = 0.1;
 				}
 
-				// Get the time scale (e.g., 100,000 years/sec)
 				double timeScale = simulator.getTimeScale();
+				// Total simulation time to advance in this single animation frame
+				double totalFrameTime = realWorldDeltaTime * timeScale;
 
-				// Calculate the amount of simulation time to advance in this frame
-				double simulationDeltaTime = realWorldDeltaTime * timeScale;
+				// Sub-divide the frame's total time into smaller, stable steps
+				int numSubSteps = (int) Math.ceil(totalFrameTime / MAX_STABLE_DT_YEARS);
+				numSubSteps = Math.max(1, numSubSteps); // Ensure at least one step is taken
+				double subStepDt = totalFrameTime / numSubSteps;
 
-				// Advance the simulation by that amount of time.
-				// We assume step(double years) exists for stable physics.
-				simulator.step(simulationDeltaTime);
+				for (int i = 0; i < numSubSteps; i++) {
+					if (!isRunning) break;
+					// Advance the simulation by one small, stable time step
+					simulator.step(subStepDt);
+				}
 
-				// Sleep to yield CPU and target a reasonable backend update rate (~60Hz)
+				// Target a frame rate of ~60 FPS for smooth animation
 				Thread.sleep(16);
 
 			} catch (InterruptedException e) {
@@ -296,6 +303,5 @@ public class SimulationController {
 				e.printStackTrace();
 			}
 		}
-
 		isRunning = false;
 	}}

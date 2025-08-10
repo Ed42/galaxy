@@ -16,7 +16,7 @@ import java.util.Random;
  */
 @Component
 public class Simulator {
-	private List<Particle> particles;
+	private volatile List<Particle> particles;
 	private double currentTime = 0;
 	private double initialEnergy = 0;
 	private boolean barEnabled = false;
@@ -46,12 +46,13 @@ public class Simulator {
 	public void reset() {
 		this.particles = initializeParticles(this.particleCount);
 		this.currentTime = 0;
+		// A short delay to allow the tree to be built before calculating energy
+		try { Thread.sleep(10); } catch (InterruptedException e) {}
 		this.initialEnergy = this.integrator.calculateTotalEnergy(this.particles);
 	}
 
 	/**
 	 * Advances the simulation by a given time step (dt) in years.
-	 * This method now delegates the complex integration work to the YoshidaIntegrator.
 	 */
 	public void step(double dt) {
 		// The simulation time step in internal units (millions of years)
@@ -65,45 +66,48 @@ public class Simulator {
 	}
 
 	/**
-	 * Initializes particles with positions and velocities appropriate for a spiral galaxy.
+	 * Initializes particles with positions and stable circular velocities.
 	 */
 	private List<Particle> initializeParticles(int count) {
 		List<Particle> newParticles = new ArrayList<>();
 		Random rand = new Random();
 
-		double diskRadius = 15000; // Define the radius for particle generation
+		double diskRadius = 15000; // Generate particles out to this radius
 
 		for (int i = 0; i < count; i++) {
-			// Create particles with a realistic radial distribution
-			double r = diskRadius * Math.sqrt(rand.nextDouble()); // More uniform than linear
+			double r = diskRadius * Math.sqrt(rand.nextDouble());
 			double theta = 2 * Math.PI * rand.nextDouble();
 			double x = r * Math.cos(theta);
 			double y = r * Math.sin(theta);
 
-			// Assign circular velocity based on the full background potential
-			Quadtree.Force force = backgroundPotential.calculateBackgroundForce(new Particle(x, y, 0, 0, 1e6, Particle.StellarType.MAIN_SEQUENCE, 0, 0, false, r));
-			double v_circ = Math.sqrt(force.magnitude() * r / 1e6);
+			// Calculate force using only the stable, axisymmetric potential to get a stable circular orbit.
+			Quadtree.Force force = backgroundPotential.calculateAxisymmetricForce(new Particle(x, y, 0, 0, 1e6, Particle.StellarType.MAIN_SEQUENCE, 0, 0, false, r));
 
-			// Convert circular velocity to cartesian components
+			// ** THE FINAL FIX IS HERE **
+			// The speed of a circular orbit depends on the MAGNITUDE of the acceleration, which is always positive.
+			// a = F/m
+			double acceleration_mag = force.magnitude() / 1e6;
+
+			// v = sqrt(a * r) for stable circular orbit
+			double v_circ = Math.sqrt(acceleration_mag * r);
+
+			// Convert the speed to a velocity vector
 			double vx = -v_circ * Math.sin(theta);
 			double vy = v_circ * Math.cos(theta);
 
-			// Add small random velocity perturbations for realism
-			vx += (rand.nextDouble() - 0.5) * 10.0; // +/- 5 km/s
+			// Add random velocity dispersion for realism
+			vx += (rand.nextDouble() - 0.5) * 10.0;
 			vy += (rand.nextDouble() - 0.5) * 10.0;
 
-			// Assign stellar type based on radial distance
 			Particle.StellarType type = (r < 3000) ? Particle.StellarType.GIANT : Particle.StellarType.MAIN_SEQUENCE;
 			double mass = (type == Particle.StellarType.GIANT) ? 1.2e6 : 1e6;
-			double age = (type == Particle.StellarType.GIANT) ? 5.0 + rand.nextDouble() * 5.0 : rand.nextDouble() * 5.0; // Gyr
+			double age = (type == Particle.StellarType.GIANT) ? 5.0 + rand.nextDouble() * 5.0 : rand.nextDouble() * 5.0;
 			double metallicity = (type == Particle.StellarType.GIANT) ? 0.02 : 0.01;
 
 			newParticles.add(new Particle(x, y, vx, vy, mass, type, age, metallicity, false, r));
 		}
-
 		return newParticles;
 	}
-
 	public double getEnergyDrift() {
 		if (initialEnergy == 0) return 0;
 		double currentEnergy = this.integrator.calculateTotalEnergy(this.particles);
@@ -111,7 +115,7 @@ public class Simulator {
 	}
 
 	public double getCurrentEnergy() {
-		if (this.particles.isEmpty()) return 0.0;
+		if (this.particles == null || this.particles.isEmpty()) return 0.0;
 		return this.integrator.calculateTotalEnergy(this.particles);
 	}
 
@@ -120,7 +124,7 @@ public class Simulator {
 	public double getCurrentTime() { return currentTime; }
 	public double getTimeScale() { return fastForward ? timeScale * 5.0 : timeScale; }
 	public void setTimeScale(double scale) { this.timeScale = Math.max(1.0, scale); }
-	public int getParticleCount() { return particles.size(); }
+	public int getParticleCount() { return (particles != null) ? particles.size() : 0; }
 	public boolean isFastForward() { return fastForward; }
 	public void setFastForward(boolean ff) { this.fastForward = ff; }
 	public void setBarEnabled(boolean enabled) { this.backgroundPotential.setBarEnabled(enabled); }
