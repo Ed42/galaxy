@@ -80,4 +80,11 @@ public class SimulationController {
 		simulator.setNumberOfArms(request.getOrDefault("arms", 2));
 		return Map.of("status", "updated");
 	}
+
+	@PostMapping("/api/smbhMass") @ResponseBody
+	public Map<String, Object> setSmbhMass(@RequestBody Map<String, Double> request) {
+		// Mass is expected in millions of solar masses from the UI
+		simulator.setSmbhMass(request.getOrDefault("mass", 4.0) * 1.0e6);
+		return Map.of("status", "updated");
+	}
 }

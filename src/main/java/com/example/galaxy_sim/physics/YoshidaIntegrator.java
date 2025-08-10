@@ -86,6 +86,7 @@ public class YoshidaIntegrator {
 		double size = Math.max(maxX - minX, maxY - minY);
 		double centerX = (minX + maxX) / 2.0;
 		double centerY = (minY + maxY) / 2.0;
+		// Add 20% padding to prevent high-velocity particles from escaping the tree mid-step
 		Quadtree tree = new Quadtree(centerX, centerY, size * 1.2);
 		for (Particle p : particles) {
 			tree.insert(p);

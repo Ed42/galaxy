@@ -5,95 +5,151 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Galaxy Simulation</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #0a0a0a; color: #ffffff; }
-        .container { max-width: 1200px; margin: 0 auto; }
-        h1 { text-align: center; color: #4fc3f7; margin-bottom: 20px; }
-        .simulation-panel { display: flex; gap: 20px; margin-bottom: 20px; flex-wrap: wrap; }
-        .canvas-container { flex: 1; border: 2px solid #333; border-radius: 8px; background: #000; position: relative; min-width: 800px; }
-        #galaxyCanvas { display: block; width: 100%; height: 800px; background: #000; cursor: grab; }
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #0a0a0a;
+            color: #ffffff;
+            font-family: Arial, sans-serif;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        h1 { text-align: center; color: #4fc3f7; margin: 0 0 20px 0; flex-shrink: 0; }
+        .main-panel {
+            display: flex;
+            gap: 20px;
+            flex-grow: 1;
+            min-height: 0;
+        }
+        .canvas-container {
+            flex-grow: 1;
+            border: 2px solid #333;
+            border-radius: 8px;
+            background: #000;
+            position: relative;
+        }
+        #galaxyCanvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            cursor: grab;
+        }
         #galaxyCanvas:active { cursor: grabbing; }
-        .controls-panel { width: 300px; background: #1a1a1a; border-radius: 8px; padding: 20px; box-shadow: 0 4px 8px rgba(0,0,0,0.3); }
-        .control-group { margin-bottom: 20px; }
+        .sidebar {
+            width: 300px;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .controls-panel, .stats-panel {
+            background: #1a1a1a;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+        .controls-panel { overflow-y: auto; }
         .control-group h3 { margin: 0 0 10px 0; color: #4fc3f7; font-size: 16px; border-bottom: 1px solid #333; padding-bottom: 5px; }
-        .button-group { display: flex; gap: 10px; margin-bottom: 10px; }
+        .button-group { display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
         button { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; transition: background-color 0.3s; background-color: #4fc3f7; color: #000; }
         button:hover { background-color: #81d4fa; }
+        button.active { background-color: #ffeb3b; box-shadow: 0 0 10px #ffeb3b; }
         input[type="range"] { width: 100%; margin: 10px 0; }
-        input[type="text"] { width: 90px; padding: 4px; border: 1px solid #666; border-radius: 4px; background: #333; color: #fff; font-size: 14px; text-align: right; }
+        input[type="text"] { width: 40px; padding: 4px; border: 1px solid #666; border-radius: 4px; background: #333; color: #fff; font-size: 14px; text-align: right; }
         .input-group { display: flex; align-items: center; justify-content: space-between; margin-top: 5px; }
-        .stats-panel { background: #1a1a1a; border-radius: 8px; padding: 20px; margin-top: 20px; }
-        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; }
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
         .stat-item { text-align: center; }
         .stat-label { font-size: 12px; color: #aaa; margin-bottom: 5px; text-transform: uppercase; }
-        .stat-value { font-size: 18px; font-weight: bold; color: #4fc3f7; }
+        .stat-value { font-size: 16px; font-weight: bold; color: #4fc3f7; }
         .legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; font-size: 14px; }
         .legend-color { width: 15px; height: 15px; border-radius: 50%; display: inline-block; border: 1px solid #555; }
     </style>
 </head>
 <body>
 <div class="container">
-    <h1>Galaxy Simulation - Barnes-Hut N-Body Dynamics</h1>
-    <div class="simulation-panel">
+    <h1>Galaxy Simulation</h1>
+    <div class="main-panel">
         <div class="canvas-container">
-            <canvas id="galaxyCanvas" width="800" height="800"></canvas>
+            <canvas id="galaxyCanvas"></canvas>
             <div id="fps-counter" style="position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.7); padding: 5px 10px; border-radius: 4px; font-size: 12px;">FPS: 0</div>
         </div>
-        <div class="controls-panel">
-            <div class="control-group">
-                <h3>Simulation Control</h3>
-                <div class="button-group">
-                    <button id="playBtn">▶ Start</button>
-                    <button id="resetBtn">⟲ Reset</button>
+        <div class="sidebar">
+            <div class="controls-panel">
+                <div class="control-group">
+                    <h3>Simulation Control</h3>
+                    <div class="button-group">
+                        <button id="playBtn">▶ Start</button>
+                        <button id="resetBtn">⟲ Reset</button>
+                        <button id="fastForwardBtn">⏩ FF</button>
+                    </div>
+                </div>
+                <div class="control-group">
+                    <h3>Time Scale</h3>
+                    <input type="range" id="timeScaleSlider" min="2" max="8" step="0.01" value="7">
+                    <div class="input-group">
+                        <label for="timeScaleInput">Scale (yr/s):</label>
+                        <input type="text" id="timeScaleInput" style="width: 90px;">
+                    </div>
+                </div>
+                <div class="control-group">
+                    <h3>Particle Count</h3>
+                    <input type="range" id="particleCountSlider" min="1000" max="50000" step="100" value="10000">
+                    <div class="input-group">
+                        <label for="particleCountInput">Count:</label>
+                        <input type="text" id="particleCountInput" style="width: 60px;">
+                    </div>
+                </div>
+                <div class="control-group">
+                    <h3>Physics Options</h3>
+                    <div class="checkbox-container"><input type="checkbox" id="barPotentialCheck"><label for="barPotentialCheck">Bar Potential</label></div>
+                    <div class="checkbox-container"><input type="checkbox" id="quadtreeOverlayCheck"><label for="quadtreeOverlayCheck">Quadtree Overlay</label></div>
+                    <input type="range" id="quadtreeDepthSlider" min="1" max="15" value="8">
+                    <div class="input-group">
+                        <label for="quadtreeDepthInput">Depth:</label>
+                        <input type="text" id="quadtreeDepthInput">
+                    </div>
+                    <input type="range" id="spiralArmSlider" min="1" max="5" step="1" value="2">
+                    <div class="input-group">
+                        <label for="spiralArmInput">Spiral Arms:</label>
+                        <input type="text" id="spiralArmInput">
+                    </div>
+                    <input type="range" id="smbhMassSlider" min="0.1" max="1000" step="0.1" value="4">
+                    <div class="input-group">
+                        <label for="smbhMassInput">SMBH Mass (10⁶ M☉):</label>
+                        <input type="text" id="smbhMassInput" style="width: 50px;">
+                    </div>
+                </div>
+                <div class="control-group">
+                    <h3>Legend</h3>
+                    <div class="legend-item"><span class="legend-color" style="background-color: #42a5f5;"></span><span>Disk Population</span></div>
+                    <div class="legend-item"><span class="legend-color" style="background-color: #ffca28;"></span><span>Bulge Population</span></div>
+                    <div class="legend-item"><span class="legend-color" style="background-color: #ff4d4d;"></span><span>SMBH</span></div>
                 </div>
             </div>
-            <div class="control-group">
-                <h3>Time Scale</h3>
-                <input type="range" id="timeScaleSlider" min="2" max="8" step="0.01" value="7">
-                <div class="input-group">
-                    <label for="timeScaleInput">Scale (yr/s):</label>
-                    <input type="text" id="timeScaleInput">
+            <div class="stats-panel">
+                <h3 style="text-align: center; margin-bottom: 20px;">Statistics</h3>
+                <div class="stats-grid">
+                    <div class="stat-item"><div class="stat-label">Time</div><div class="stat-value" id="simTime">0.00 Myr</div></div>
+                    <div class="stat-item"><div class="stat-label">Particles</div><div class="stat-value" id="particleCount">0</div></div>
+                    <div class="stat-item"><div class="stat-label">Avg Velocity</div><div class="stat-value" id="avgVelocity">0 km/s</div></div>
+                    <div class="stat-item"><div class="stat-label">Avg Distance</div><div class="stat-value" id="avgDistance">0 pc</div></div>
+                    <div class="stat-item" style="grid-column: 1 / -1;"><div class="stat-label">Energy Drift</div><div class="stat-value" id="energyDrift">0.00%</div></div>
                 </div>
             </div>
-            <div class="control-group">
-                <h3>Particle Count</h3>
-                <input type="range" id="particleCountSlider" min="1000" max="50000" step="100" value="10000">
-                <div class="input-group">
-                    <label for="particleCountInput">Count:</label>
-                    <input type="text" id="particleCountInput">
-                </div>
-            </div>
-            <div class="control-group">
-                <h3>Physics Options</h3>
-                <div class="checkbox-container"><input type="checkbox" id="quadtreeOverlayCheck"><label for="quadtreeOverlayCheck">Quadtree Overlay</label></div>
-                <input type="range" id="quadtreeDepthSlider" min="1" max="15" value="8">
-                <div class="input-group"><span>Depth:</span><span id="quadtreeDepthValue">8</span></div>
-                <div class="checkbox-container"><input type="checkbox" id="barPotentialCheck"><label for="barPotentialCheck">Bar Potential</label></div>
-                <input type="range" id="spiralArmSlider" min="1" max="5" step="1" value="2">
-                <div class="input-group"><span>Spiral Arms:</span><span id="spiralArmValue">2</span></div>
-            </div>
-            <div class="control-group">
-                <h3>Legend</h3>
-                <div class="legend-item"><span class="legend-color" style="background-color: #42a5f5;"></span><span>Disk Population</span></div>
-                <div class="legend-item"><span class="legend-color" style="background-color: #ffca28;"></span><span>Bulge Population</span></div>
-                <div class="legend-item"><span class="legend-color" style="background-color: #ff4d4d;"></span><span>SMBH</span></div>
-            </div>
-        </div>
-    </div>
-    <div class="stats-panel">
-        <h3 style="text-align: center; margin-bottom: 20px;">Simulation Statistics</h3>
-        <div class="stats-grid">
-            <div class="stat-item"><div class="stat-label">Time</div><div class="stat-value" id="simTime">0.00 Myr</div></div>
-            <div class="stat-item"><div class="stat-label">Energy</div><div class="stat-value" id="totalEnergy">0</div></div>
-            <div class="stat-item"><div class="stat-label">Energy Drift</div><div class="stat-value" id="energyDrift">0.00%</div></div>
-            <div class="stat-item"><div class="stat-label">Particles</div><div class="stat-value" id="particleCount">0</div></div>
-            <div class="stat-item"><div class="stat-label">Avg Velocity</div><div class="stat-value" id="avgVelocity">0 km/s</div></div>
-            <div class="stat-item"><div class="stat-label">Avg Distance</div><div class="stat-value" id="avgDistance">0 pc</div></div>
         </div>
     </div>
 </div>
 <script>
     let canvas, ctx, isRunning = false, showQuadtree = false, zoom = 1.0, offsetX = 0, offsetY = 0, isDragging = false, lastMouseX, lastMouseY, lastFrameTime = 0;
-    let simulationState = { particles: [], currentTime: 0, energy: 0, energyDrift: 0, particleCount: 0, avgVelocity: 0, avgDistanceToCenter: 0, quadtreeBounds: [] };
+    let simulationState = { particles: [], currentTime: 0, energy: 0, energyDrift: 0, particleCount: 0, avgVelocity: 0, avgDistanceToCenter: 0, quadtreeBounds: [], fastForward: false };
     let socket;
 
     window.onload = () => {
@@ -119,6 +175,7 @@
                 isRunning = simulationState.isRunning;
                 document.getElementById('playBtn').textContent = isRunning ? '⏸ Pause' : '▶ Start';
             }
+            document.getElementById('fastForwardBtn').classList.toggle('active', simulationState.fastForward);
             updateUI();
         };
 
@@ -133,10 +190,11 @@
     function setupEventListeners() {
         const canvasContainer = document.querySelector('.canvas-container');
         const resizeObserver = new ResizeObserver(entries => {
-            const entry = entries[0];
-            const newSize = Math.min(entry.contentRect.width, entry.contentRect.height);
-            canvas.width = newSize;
-            canvas.height = newSize;
+            for (const entry of entries) {
+                const { width, height } = entry.contentRect;
+                canvas.width = width;
+                canvas.height = height;
+            }
         });
         resizeObserver.observe(canvasContainer);
 
@@ -156,56 +214,55 @@
 
         document.getElementById('playBtn').addEventListener('click', () => postRequest(isRunning ? '/api/pause' : '/api/start', {}));
         document.getElementById('resetBtn').addEventListener('click', () => postRequest('/api/reset', {}));
+        document.getElementById('fastForwardBtn').addEventListener('click', toggleFastForward);
 
-        // Time Scale Input & Slider
-        const timeSlider = document.getElementById('timeScaleSlider');
-        const timeInput = document.getElementById('timeScaleInput');
-        timeSlider.addEventListener('input', () => {
-            timeInput.value = Math.pow(10, parseFloat(timeSlider.value)).toExponential(1);
-        });
-        timeSlider.addEventListener('change', () => {
-            postRequest('/api/timeScale', { timeScale: Math.pow(10, parseFloat(timeSlider.value)) });
-        });
-        timeInput.addEventListener('change', () => {
-            const value = parseFloat(timeInput.value);
-            if (!isNaN(value) && value > 0) {
-                timeSlider.value = Math.log10(value);
-                postRequest('/api/timeScale', { timeScale: value });
+        window.addEventListener('keydown', e => {
+            if (e.target.tagName === 'INPUT') return;
+            switch (e.code) {
+                case 'Space': e.preventDefault(); postRequest(isRunning ? '/api/pause' : '/api/start', {}); break;
+                case 'KeyR': e.preventDefault(); postRequest('/api/reset', {}); break;
+                case 'KeyF': e.preventDefault(); toggleFastForward(); break;
             }
         });
-        timeInput.value = Math.pow(10, parseFloat(timeSlider.value)).toExponential(1);
 
-        // Particle Count Input & Slider
-        const countSlider = document.getElementById('particleCountSlider');
-        const countInput = document.getElementById('particleCountInput');
-        countSlider.addEventListener('input', () => {
-            countInput.value = countSlider.value;
-        });
-        countSlider.addEventListener('change', () => {
-            postRequest('/api/particleCount', { count: parseInt(countSlider.value, 10) });
-        });
-        countInput.addEventListener('change', () => {
-            let value = parseInt(countInput.value, 10);
-            if (isNaN(value)) value = 1000;
-            value = Math.max(parseInt(countSlider.min), Math.min(value, parseInt(countSlider.max)));
-            countInput.value = value;
-            countSlider.value = value;
-            postRequest('/api/particleCount', { count: value });
-        });
-        countInput.value = countSlider.value;
+        // Two-way binding helper
+        function setupTwoWayBinding(sliderId, inputId, isLog, toApi) {
+            const slider = document.getElementById(sliderId);
+            const input = document.getElementById(inputId);
 
-        // Other controls
-        document.getElementById('quadtreeOverlayCheck').addEventListener('change', updateQuadtreeSettings);
-        document.getElementById('quadtreeDepthSlider').addEventListener('input', updateQuadtreeSettings);
+            const updateFromSlider = () => {
+                input.value = isLog ? Math.pow(10, parseFloat(slider.value)).toExponential(1) : slider.value;
+            };
+
+            const updateFromInput = () => {
+                let value = isLog ? parseFloat(input.value) : parseInt(input.value, 10);
+                if (isNaN(value)) return;
+                value = Math.max(Number(slider.min), Math.min(value, Number(slider.max)));
+                slider.value = isLog ? Math.log10(value) : value;
+                if (isLog) { input.value = value.toExponential(1); } else { input.value = value; }
+            };
+
+            slider.addEventListener('input', updateFromSlider);
+            slider.addEventListener('change', () => toApi(isLog ? Math.pow(10, parseFloat(slider.value)) : parseInt(slider.value)));
+            input.addEventListener('change', () => {
+                updateFromInput();
+                toApi(isLog ? parseFloat(input.value) : parseInt(input.value));
+            });
+            updateFromSlider();
+        }
+
+        setupTwoWayBinding('timeScaleSlider', 'timeScaleInput', true, (val) => postRequest('/api/timeScale', { timeScale: val }));
+        setupTwoWayBinding('particleCountSlider', 'particleCountInput', false, (val) => postRequest('/api/particleCount', { count: val }));
+        setupTwoWayBinding('quadtreeDepthSlider', 'quadtreeDepthInput', false, (val) => updateQuadtreeSettings());
+        setupTwoWayBinding('spiralArmSlider', 'spiralArmInput', false, (val) => postRequest('/api/spiralArms', { arms: val }));
+        setupTwoWayBinding('smbhMassSlider', 'smbhMassInput', false, (val) => postRequest('/api/smbhMass', { mass: val }));
+
         document.getElementById('barPotentialCheck').addEventListener('change', () => postRequest('/api/barPotential', { enabled: document.getElementById('barPotentialCheck').checked }));
+        document.getElementById('quadtreeOverlayCheck').addEventListener('change', updateQuadtreeSettings);
+    }
 
-        const armSlider = document.getElementById('spiralArmSlider');
-        const armValue = document.getElementById('spiralArmValue');
-        armSlider.addEventListener('input', () => armValue.textContent = armSlider.value);
-        armSlider.addEventListener('change', () => {
-            postRequest('/api/spiralArms', { arms: parseInt(armSlider.value, 10) });
-        });
-        armValue.textContent = armSlider.value;
+    async function toggleFastForward() {
+        await postRequest('/api/fastForward', { enabled: !simulationState.fastForward });
     }
 
     function startAnimationLoop() {
@@ -225,7 +282,6 @@
         ctx.fillStyle = '#000';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // Center the coordinate system and apply zoom and pan
         ctx.translate(canvas.width / 2, canvas.height / 2);
         const worldToCanvasScale = (canvas.width / 30000) * zoom;
         ctx.scale(worldToCanvasScale, worldToCanvasScale);
@@ -239,7 +295,6 @@
             if (simulationState.particles) renderParticles(particleRadius);
             renderSmbh(lineWidth);
         }
-
         ctx.restore();
     }
 
@@ -250,7 +305,7 @@
             const pX = particles[i], pY = particles[i + 1], pType = particles[i + 2];
             ctx.fillStyle = pType === 1 ? '#ffca28' : '#42a5f5';
             ctx.beginPath();
-            ctx.arc(pX, -pY, radius, 0, 2 * Math.PI); // Invert Y for standard math coordinates
+            ctx.arc(pX, -pY, radius, 0, 2 * Math.PI);
             ctx.fill();
         }
         ctx.globalAlpha = 1.0;
@@ -297,7 +352,7 @@
         const slider = document.getElementById('quadtreeDepthSlider');
         const depth = parseInt(slider.value, 10);
         showQuadtree = checkbox.checked;
-        document.getElementById('quadtreeDepthValue').textContent = depth;
+        document.getElementById('quadtreeDepthInput').value = depth;
         postRequest('/api/quadtree', { enabled: showQuadtree, depth: depth });
     }
 </script>

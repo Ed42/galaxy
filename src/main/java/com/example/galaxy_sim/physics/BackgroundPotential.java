@@ -17,7 +17,7 @@ public class BackgroundPotential {
 	private static final double M_BULGE = 1.0e10;
 	private static final double A_BULGE = 1000.0;
 	private static final double V_HALO = 200.0;
-	private static final double M_SMBH = 4.0e6;
+	private double M_SMBH = 4.0e6; // Now a mutable field
 	private static final double EPSILON_SMBH = 1.0;
 
 	// Spiral Arm Parameters
@@ -25,10 +25,7 @@ public class BackgroundPotential {
 	private static final double AMP_SPIRAL = 0.1;
 	private static final double OMEGA_PATTERN = 0.025;
 
-	// ** THE FIX IS HERE **
-	// The number of spiral arms is now a configurable field instead of a constant.
 	private double nSpiral = 2.0;
-
 	private boolean barEnabled = false;
 
 	public Quadtree.Force calculateBackgroundForce(Particle p, double currentTimeMyr) {
@@ -74,7 +71,6 @@ public class BackgroundPotential {
 		double theta = Math.atan2(p.y(), p.x());
 		double time_sys = currentTimeMyr * 1.0227;
 		double A = AMP_SPIRAL * diskAcceleration(r) * r;
-		// Use the nSpiral field here
 		double phase = this.nSpiral * (theta - OMEGA_PATTERN * time_sys) - K_SPIRAL * Math.log(r / A_DISK);
 		double Fr = -A * (K_SPIRAL / r) * Math.sin(phase);
 		double F_theta = A * (this.nSpiral / r) * Math.sin(phase);
@@ -90,6 +86,12 @@ public class BackgroundPotential {
 	public void setNumberOfArms(int n) {
 		if (n > 0) {
 			this.nSpiral = n;
+		}
+	}
+
+	public void setSmbhMass(double mass) {
+		if (mass > 0) {
+			this.M_SMBH = mass;
 		}
 	}
 }

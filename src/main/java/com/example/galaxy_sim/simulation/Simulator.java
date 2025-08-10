@@ -28,6 +28,7 @@ public class Simulator {
 
 	private boolean quadtreeOverlayEnabled = false;
 	private int quadtreeMaxDepth = 8;
+	private static final double PARTICLE_REMOVAL_DISTANCE = 50000; // 50 kpc
 
 	private static final double G = 4.30091e-3;
 	private static final double THETA = 0.7;
@@ -51,6 +52,16 @@ public class Simulator {
 		double currentTimeMyr = this.currentTime / 1_000_000.0;
 		this.particles = integrator.step(this.particles, timeStepMyr, currentTimeMyr);
 		this.currentTime += dt;
+		removeDistantParticles();
+	}
+
+	private void removeDistantParticles() {
+		if (particles == null || particles.isEmpty()) {
+			return;
+		}
+		this.particles = particles.parallelStream()
+			.filter(p -> Math.sqrt(p.x() * p.x() + p.y() * p.y()) < PARTICLE_REMOVAL_DISTANCE)
+			.collect(Collectors.toList());
 	}
 
 	private List<Particle> initializeParticles(int count) {
@@ -104,6 +115,7 @@ public class Simulator {
 	public void setQuadtreeOverlayEnabled(boolean enabled) { this.quadtreeOverlayEnabled = enabled; }
 	public void setQuadtreeMaxDepth(int depth) { this.quadtreeMaxDepth = depth; }
 	public void setNumberOfArms(int n) { this.backgroundPotential.setNumberOfArms(n); }
+	public void setSmbhMass(double mass) { this.backgroundPotential.setSmbhMass(mass); }
 
 	public List<Quadtree.Bounds> getQuadtreeBounds() {
 		Quadtree tree = integrator.getLastBuiltTree();
