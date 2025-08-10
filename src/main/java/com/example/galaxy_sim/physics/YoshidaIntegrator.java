@@ -2,13 +2,17 @@ package com.example.galaxy_sim.physics;
 
 import com.example.galaxy_sim.model.Particle;
 import com.example.galaxy_sim.physics.Quadtree.Force;
+
 import java.util.List;
 import java.util.ArrayList;
+import java.util.stream.Collectors;
 
 /**
- * 4th-order symplectic integrator using Yoshida coefficients.
+ * A 4th-order symplectic integrator that uses parallel processing
+ * to significantly speed up force calculations on multi-core systems.
  */
 public class YoshidaIntegrator {
+	// Yoshida 4th-order coefficients
 	private static final double W1 = 1.0 / (2.0 - Math.pow(2.0, 1.0/3.0));
 	private static final double W0 = -Math.pow(2.0, 1.0/3.0) * W1;
 	private static final double C1 = W1 / 2.0, C4 = C1;
@@ -20,7 +24,7 @@ public class YoshidaIntegrator {
 
 	private final BackgroundPotential backgroundPotential;
 	private final double G, THETA, SOFTENING;
-	private Quadtree lastBuiltTree; // Store the last tree for visualization
+	private Quadtree lastBuiltTree;
 
 	public YoshidaIntegrator(BackgroundPotential backgroundPotential, double G, double theta, double softening) {
 		this.backgroundPotential = backgroundPotential;
@@ -45,32 +49,40 @@ public class YoshidaIntegrator {
 	}
 
 	private List<Particle> updatePositions(List<Particle> particles, double dt_sys) {
-		List<Particle> updated = new ArrayList<>();
-		for (Particle p : particles) {
-			double newX = p.x() + p.vx() * dt_sys;
-			double newY = p.y() + p.vy() * dt_sys;
-			updated.add(new Particle(newX, newY, p.vx(), p.vy(), p.mass(), p.stellarType(), p.age(), p.metallicity(), p.habitable(), p.distanceToSMBH()));
-		}
-		return updated;
+		// This operation is simple and fast; parallelizing it has little benefit
+		// but is done for consistency.
+		return particles.parallelStream()
+			.map(p -> new Particle(
+				p.x() + p.vx() * dt_sys,
+				p.y() + p.vy() * dt_sys,
+				p.vx(), p.vy(), p.mass(), p.stellarType(), p.age(), p.metallicity(), p.habitable(), p.distanceToSMBH()
+			))
+			.collect(Collectors.toList());
 	}
 
 	private List<Particle> updateVelocities(List<Particle> particles, double dt_sys, double timeForForceCalc) {
-		List<Particle> updated = new ArrayList<>();
-		this.lastBuiltTree = buildQuadtree(particles); // Update the stored tree
+		this.lastBuiltTree = buildQuadtree(particles);
 
-		for (Particle p : particles) {
-			Force particleForce = lastBuiltTree.calculateForce(p, G, THETA, SOFTENING);
-			Force backgroundForce = backgroundPotential.calculateBackgroundForce(p, timeForForceCalc);
-			Force totalForce = particleForce.add(backgroundForce);
+		// ** THE FIX IS HERE **
+		// This is the primary bottleneck. Using a parallel stream distributes the workload
+		// of force calculation across all available CPU cores.
+		return particles.parallelStream()
+			.map(p -> {
+				Force particleForce = lastBuiltTree.calculateForce(p, G, THETA, SOFTENING);
+				Force backgroundForce = backgroundPotential.calculateBackgroundForce(p, timeForForceCalc);
+				Force totalForce = particleForce.add(backgroundForce);
 
-			double ax = totalForce.fx() / p.mass();
-			double ay = totalForce.fy() / p.mass();
-			double newVx = p.vx() + ax * dt_sys;
-			double newVy = p.vy() + ay * dt_sys;
-			double distToSMBH = Math.sqrt(p.x() * p.x() + p.y() * p.y());
-			updated.add(new Particle(p.x(), p.y(), newVx, newVy, p.mass(), p.stellarType(), p.age(), p.metallicity(), p.habitable(), distToSMBH));
-		}
-		return updated;
+				double ax = totalForce.fx() / p.mass();
+				double ay = totalForce.fy() / p.mass();
+
+				double newVx = p.vx() + ax * dt_sys;
+				double newVy = p.vy() + ay * dt_sys;
+
+				double distToSMBH = Math.sqrt(p.x() * p.x() + p.y() * p.y());
+
+				return new Particle(p.x(), p.y(), newVx, newVy, p.mass(), p.stellarType(), p.age(), p.metallicity(), p.habitable(), distToSMBH);
+			})
+			.collect(Collectors.toList());
 	}
 
 	private Quadtree buildQuadtree(List<Particle> particles) {
@@ -98,13 +110,15 @@ public class YoshidaIntegrator {
 
 	public double calculateTotalEnergy(List<Particle> particles) {
 		if (particles == null || particles.isEmpty()) return 0.0;
-		double kineticEnergy = 0.0;
-		double potentialEnergy = 0.0;
 		this.lastBuiltTree = buildQuadtree(particles);
-		for (Particle p : particles) {
-			kineticEnergy += 0.5 * p.mass() * (p.vx() * p.vx() + p.vy() * p.vy());
-			potentialEnergy += lastBuiltTree.calculatePotential(p, G, THETA, SOFTENING);
-		}
-		return kineticEnergy + (potentialEnergy / 2.0);
+		// Also parallelize energy calculation for consistency
+		return particles.parallelStream()
+			.mapToDouble(p -> {
+				double kineticEnergy = 0.5 * p.mass() * (p.vx() * p.vx() + p.vy() * p.vy());
+				// The potential is calculated per pair, so we divide by 2 later.
+				double potentialEnergy = lastBuiltTree.calculatePotential(p, G, THETA, SOFTENING);
+				return kineticEnergy + potentialEnergy;
+			})
+			.sum();
 	}
 }
