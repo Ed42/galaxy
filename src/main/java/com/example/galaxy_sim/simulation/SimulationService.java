@@ -1,6 +1,6 @@
 package com.example.galaxy_sim.simulation;
 
-import com.example.galaxy_sim.model.Particle;
+import com.example.galaxy_sim.physics.Quadtree;
 import com.example.galaxy_sim.web.SimulationSocketHandler;
 import jakarta.annotation.PreDestroy;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,106 +18,104 @@ import java.util.concurrent.TimeUnit;
 @Service
 public class SimulationService {
 
-    private final Simulator simulator;
-    private final SimulationSocketHandler socketHandler;
-    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
-    private ScheduledFuture<?> simulationTask;
-    private volatile boolean isRunning = false;
+	private final Simulator simulator;
+	private final SimulationSocketHandler socketHandler;
+	private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+	private ScheduledFuture<?> simulationTask;
+	private volatile boolean isRunning = false;
 
-    // The simulation will be ticked at this rate in the real world.
-    private static final int TICK_RATE_HZ = 30;
-    private static final long NANOS_PER_SECOND = 1_000_000_000;
-    private static final long TICK_INTERVAL_NANOS = NANOS_PER_SECOND / TICK_RATE_HZ;
+	private static final int TICK_RATE_HZ = 30;
+	private static final int SUB_STEPS_PER_TICK = 10;
 
-    @Autowired
-    public SimulationService(Simulator simulator, SimulationSocketHandler socketHandler) {
-        this.simulator = simulator;
-        this.socketHandler = socketHandler;
-    }
+	@Autowired
+	public SimulationService(Simulator simulator, SimulationSocketHandler socketHandler) {
+		this.simulator = simulator;
+		this.socketHandler = socketHandler;
+	}
 
-    public void start() {
-        if (isRunning) {
-            return;
-        }
-        isRunning = true;
-        // Schedule the simulation task to run at a fixed rate.
-        simulationTask = scheduler.scheduleAtFixedRate(this::tick, 0, TICK_INTERVAL_NANOS, TimeUnit.NANOSECONDS);
-    }
+	public void start() {
+		if (isRunning) return;
+		isRunning = true;
+		simulationTask = scheduler.scheduleAtFixedRate(this::tick, 0, 1000 / TICK_RATE_HZ, TimeUnit.MILLISECONDS);
+	}
 
-    public void pause() {
-        isRunning = false;
-        if (simulationTask != null) {
-            simulationTask.cancel(false);
-        }
-        // Send a final state update on pause, ensuring the UI reflects the "paused" state.
-        broadcastState();
-    }
+	public void pause() {
+		isRunning = false;
+		if (simulationTask != null) {
+			simulationTask.cancel(false);
+		}
+		broadcastState();
+	}
 
-    public void reset() {
-        pause(); // Ensure the simulation is stopped before resetting.
-        simulator.reset();
-        broadcastState(); // Broadcast the fresh state.
-    }
+	public void reset() {
+		pause();
+		simulator.reset();
+		broadcastState();
+	}
 
-    public void setParticleCount(int count) {
-        pause();
-        simulator.setParticleCount(count);
-        broadcastState();
-    }
+	private void tick() {
+		try {
+			double totalDtForTick = simulator.getTimeScale() / TICK_RATE_HZ;
+			double subStepDt = totalDtForTick / SUB_STEPS_PER_TICK;
+			for (int i = 0; i < SUB_STEPS_PER_TICK; i++) {
+				simulator.advanceSimulation(subStepDt);
+			}
+			broadcastState();
+		} catch (Exception e) {
+			e.printStackTrace();
+			pause();
+		}
+	}
 
-    public boolean isRunning() {
-        return isRunning;
-    }
+	private void broadcastState() {
+		float[] rawData = simulator.getRawDataForVisualization();
+		if (rawData == null || rawData.length == 0) return;
 
-    private void tick() {
-        try {
-            // Calculate the amount of simulation time to advance in this single tick.
-            // timeScale is in sim years per real second.
-            // We divide by TICK_RATE_HZ to get sim years per tick.
-            double simulationDt = simulator.getTimeScale() / TICK_RATE_HZ;
-            simulator.step(simulationDt);
-            broadcastState();
-        } catch (Exception e) {
-            // If anything goes wrong, log it and stop the simulation to prevent further errors.
-            e.printStackTrace();
-            pause();
-        }
-    }
+		int particleCount = rawData.length / 6;
+		double currentEnergy = simulator.calculateTotalEnergy(rawData);
+		double energyDrift = simulator.getEnergyDrift(currentEnergy);
+		double totalVelocity = 0;
+		double totalDistance = 0;
 
-    private void broadcastState() {
-        Map<String, Object> state = new HashMap<>();
-		List<Particle> particles = simulator.getParticles();
-		if (particles == null) {
-			particles = new ArrayList<>();
+		List<Object> flatParticleData = new ArrayList<>(particleCount * 3);
+		for (int i = 0; i < particleCount; i++) {
+			int base = i * 6;
+			float x = rawData[base];
+			float y = rawData[base + 1];
+			totalVelocity += Math.sqrt(rawData[base + 2] * rawData[base + 2] + rawData[base + 3] * rawData[base + 3]);
+			totalDistance += Math.sqrt(x * x + y * y);
+			flatParticleData.add(x);
+			flatParticleData.add(y);
+			flatParticleData.add(rawData[base + 5]);
 		}
 
-		List<Object> flatParticleData = new ArrayList<>(particles.size() * 3);
-		for (Particle p : particles) {
-			flatParticleData.add(p.x());
-			flatParticleData.add(p.y());
-			flatParticleData.add(p.stellarType() == Particle.StellarType.GIANT ? 1 : 0);
-		}
+		Map<String, Object> state = new HashMap<>();
 		state.put("particles", flatParticleData);
-		state.put("particleCount", particles.size());
+		state.put("particleCount", particleCount);
 		state.put("currentTime", simulator.getCurrentTime());
 		state.put("timeScale", simulator.getTimeScale());
-		state.put("energy", simulator.getCurrentEnergy());
-		state.put("energyDrift", simulator.getEnergyDrift());
-		state.put("isRunning", isRunning); // Use the service's own state
+		state.put("energy", currentEnergy);
+		state.put("energyDrift", energyDrift);
+		state.put("isRunning", isRunning);
 		state.put("fastForward", simulator.isFastForward());
-		if (simulator.isQuadtreeOverlayEnabled()) {
-			state.put("quadtreeBounds", simulator.getQuadtreeBounds());
-		}
-		double avgVelocity = particles.stream().mapToDouble(p -> Math.sqrt(p.vx() * p.vx() + p.vy() * p.vy())).average().orElse(0.0);
-		double avgDistanceToCenter = particles.stream().mapToDouble(Particle::distanceToSMBH).average().orElse(0.0);
-		state.put("avgVelocity", avgVelocity);
-		state.put("avgDistanceToCenter", avgDistanceToCenter);
+		state.put("avgVelocity", (particleCount > 0) ? totalVelocity / particleCount : 0.0);
+		state.put("avgDistanceToCenter", (particleCount > 0) ? totalDistance / particleCount : 0.0);
+		state.put("quadtreeBounds", simulator.getQuadtreeBounds(rawData));
 
 		socketHandler.broadcast(state);
-    }
+	}
 
-    @PreDestroy
-    public void shutdown() {
-        scheduler.shutdownNow();
-    }
+	public void setParticleCount(int count) {
+		pause();
+		simulator.setParticleCount(count);
+		broadcastState();
+	}
+
+	public boolean isRunning() { return isRunning; }
+
+	@PreDestroy
+	public void shutdown() {
+		if (simulator != null) simulator.shutdown();
+		scheduler.shutdownNow();
+	}
 }

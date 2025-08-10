@@ -2,69 +2,109 @@ package com.example.galaxy_sim.simulation;
 
 import com.example.galaxy_sim.model.Particle;
 import com.example.galaxy_sim.physics.BackgroundPotential;
+import com.example.galaxy_sim.physics.CudaIntegrator;
 import com.example.galaxy_sim.physics.Quadtree;
-import com.example.galaxy_sim.physics.YoshidaIntegrator;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
-import java.util.stream.Collectors;
 
-/**
- * Manages the state and progression of the galaxy simulation.
- */
 @Component
 public class Simulator {
-	private volatile List<Particle> particles;
 	private double currentTime = 0;
 	private double initialEnergy = 0;
 	private boolean fastForward = false;
 	private int particleCount = 10000;
 	private double timeScale = 1.0e7;
 
-	private final YoshidaIntegrator integrator;
-	private final BackgroundPotential backgroundPotential;
+	private final CudaIntegrator integrator;
+	private final BackgroundPotential backgroundPotential; // Used for initialization only
 
 	private boolean quadtreeOverlayEnabled = false;
 	private int quadtreeMaxDepth = 8;
-	private static final double PARTICLE_REMOVAL_DISTANCE = 50000; // 50 kpc
-
-	private static final double G = 4.30091e-3;
-	private static final double THETA = 0.7;
-	private static final double SOFTENING = 15.0;
 
 	public Simulator() {
 		this.backgroundPotential = new BackgroundPotential();
-		this.integrator = new YoshidaIntegrator(this.backgroundPotential, G, THETA, SOFTENING);
+		this.integrator = new CudaIntegrator();
 		reset();
 	}
 
 	public void reset() {
-		this.particles = initializeParticles(this.particleCount);
+		List<Particle> initialParticles = initializeParticles(this.particleCount);
 		this.currentTime = 0;
-		try { Thread.sleep(10); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
-		this.initialEnergy = this.integrator.calculateTotalEnergy(this.particles);
+		this.integrator.initialize(initialParticles);
+		this.initialEnergy = calculateTotalEnergyFromList(initialParticles);
 	}
 
-	public void step(double dt) {
-		double timeStepMyr = dt / 1_000_000.0;
-		double currentTimeMyr = this.currentTime / 1_000_000.0;
-		this.particles = integrator.step(this.particles, timeStepMyr, currentTimeMyr);
+	public void advanceSimulation(double dt) {
+		integrator.step(dt / 1_000_000.0, this.currentTime / 1_000_000.0);
 		this.currentTime += dt;
-		removeDistantParticles();
 	}
 
-	private void removeDistantParticles() {
-		if (particles == null || particles.isEmpty()) {
-			return;
+	public float[] getRawDataForVisualization() {
+		return integrator.getRawData();
+	}
+
+	public List<Quadtree.Bounds> getQuadtreeBounds(float[] rawData) {
+		if (!this.quadtreeOverlayEnabled || rawData.length == 0) {
+			return new ArrayList<>();
 		}
-		this.particles = particles.parallelStream()
-			.filter(p -> Math.sqrt(p.x() * p.x() + p.y() * p.y()) < PARTICLE_REMOVAL_DISTANCE)
-			.collect(Collectors.toList());
+		// Build the quadtree on the CPU from the latest data for visualization only
+		List<Particle> particles = new ArrayList<>(rawData.length / 6);
+		for (int i = 0; i < rawData.length / 6; i++) {
+			int base = i * 6;
+			particles.add(new Particle(rawData[base], rawData[base+1], 0,0,0, Particle.StellarType.MAIN_SEQUENCE,0,0,false,0));
+		}
+
+		double minX = Double.MAX_VALUE, maxX = Double.MIN_VALUE;
+		double minY = Double.MAX_VALUE, maxY = Double.MIN_VALUE;
+		for (Particle p : particles) {
+			if (p.x() < minX) minX = p.x();
+			if (p.x() > maxX) maxX = p.x();
+			if (p.y() < minY) minY = p.y();
+			if (p.y() > maxY) maxY = p.y();
+		}
+		double size = Math.max(maxX - minX, maxY - minY);
+		double centerX = (minX + maxX) / 2.0;
+		double centerY = (minY + maxY) / 2.0;
+		Quadtree tree = new Quadtree(centerX, centerY, size * 1.2);
+		for (Particle p : particles) {
+			tree.insert(p);
+		}
+		return tree.getBounds(this.quadtreeMaxDepth);
+	}
+
+	public double calculateTotalEnergyFromList(List<Particle> particleList) {
+		if (particleList == null || particleList.isEmpty()) return 0.0;
+		return particleList.parallelStream()
+			.mapToDouble(p -> 0.5 * p.mass() * (p.vx() * p.vx() + p.vy() * p.vy()))
+			.sum();
+	}
+
+	public double calculateTotalEnergy(float[] rawData) {
+		if (rawData == null || rawData.length == 0) return 0.0;
+		double totalEnergy = 0;
+		for (int i = 0; i < rawData.length; i += 6) {
+			double vx = rawData[i + 2];
+			double vy = rawData[i + 3];
+			double mass = rawData[i + 4];
+			totalEnergy += 0.5 * mass * (vx * vx + vy * vy);
+		}
+		return totalEnergy;
+	}
+
+	public double getEnergyDrift(double currentEnergy) {
+		if (initialEnergy == 0) return 0.0;
+		return (currentEnergy - initialEnergy) / initialEnergy;
+	}
+
+	public void shutdown() {
+		integrator.shutdown();
 	}
 
 	private List<Particle> initializeParticles(int count) {
+		// This method remains unchanged
 		List<Particle> newParticles = new ArrayList<>();
 		Random rand = new Random();
 		double diskRadius = 15000.0, bulgeRadius = 3000.0;
@@ -93,40 +133,16 @@ public class Simulator {
 		return newParticles;
 	}
 
-	public double getEnergyDrift() {
-		if (initialEnergy == 0) return 0.0;
-		double currentEnergy = this.integrator.calculateTotalEnergy(this.particles);
-		return (initialEnergy == 0) ? 0.0 : (currentEnergy - initialEnergy) / initialEnergy;
-	}
-	public double getCurrentEnergy() { return this.integrator.calculateTotalEnergy(this.particles); }
-	public List<Particle> getParticles() { return particles; }
 	public double getCurrentTime() { return currentTime; }
 	public double getTimeScale() { return fastForward ? timeScale * 5.0 : timeScale; }
 	public void setTimeScale(double scale) { this.timeScale = Math.max(1.0, scale); }
-	public int getParticleCount() { return (particles != null) ? particles.size() : 0; }
+	public int getParticleCount() { return this.particleCount; }
 	public boolean isFastForward() { return fastForward; }
 	public void setFastForward(boolean ff) { this.fastForward = ff; }
-	public void setBarEnabled(boolean enabled) { this.backgroundPotential.setBarEnabled(enabled); }
-	public void setParticleCount(int count) {
-		this.particleCount = count;
-		this.reset();
-	}
-	public boolean isQuadtreeOverlayEnabled() { return quadtreeOverlayEnabled; }
+	public void setBarEnabled(boolean enabled) { integrator.setBarEnabled(enabled); }
+	public void setParticleCount(int count) { this.particleCount = count; reset(); }
+	public void setNumberOfArms(int n) { /* No-op */ }
+	public void setSmbhMass(double mass) { integrator.setSmbhMass(mass); }
 	public void setQuadtreeOverlayEnabled(boolean enabled) { this.quadtreeOverlayEnabled = enabled; }
 	public void setQuadtreeMaxDepth(int depth) { this.quadtreeMaxDepth = depth; }
-	public void setNumberOfArms(int n) { this.backgroundPotential.setNumberOfArms(n); }
-	public void setSmbhMass(double mass) { this.backgroundPotential.setSmbhMass(mass); }
-
-	public List<Quadtree.Bounds> getQuadtreeBounds() {
-		Quadtree tree = integrator.getLastBuiltTree();
-		if (tree != null) {
-			List<Quadtree.Bounds> allBounds = tree.getBounds(this.quadtreeMaxDepth);
-			final double viewRadius = 30000;
-			return allBounds.stream()
-				.filter(b -> (b.x() - b.size() < viewRadius) && (b.x() + b.size() > -viewRadius) &&
-					(b.y() - b.size() < viewRadius) && (b.y() + b.size() > -viewRadius))
-				.collect(Collectors.toList());
-		}
-		return new ArrayList<>();
-	}
 }

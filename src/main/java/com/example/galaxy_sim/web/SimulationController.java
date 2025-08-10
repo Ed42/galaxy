@@ -13,7 +13,7 @@ import java.util.Map;
 public class SimulationController {
 
 	private final SimulationService simulationService;
-	private final Simulator simulator; // Keep for direct settings
+	private final Simulator simulator;
 
 	@Autowired
 	public SimulationController(SimulationService simulationService, Simulator simulator) {
@@ -68,15 +68,10 @@ public class SimulationController {
 		return Map.of("status", "updated");
 	}
 
-	@PostMapping("/api/quadtree") @ResponseBody
-	public Map<String, Object> setQuadtreeSettings(@RequestBody Map<String, Object> request) {
-		simulator.setQuadtreeOverlayEnabled((boolean) request.getOrDefault("enabled", false));
-		simulator.setQuadtreeMaxDepth(((Number) request.getOrDefault("depth", 8)).intValue());
-		return Map.of("status", "updated");
-	}
-
 	@PostMapping("/api/spiralArms") @ResponseBody
 	public Map<String, Object> setSpiralArmCount(@RequestBody Map<String, Integer> request) {
+		// Note: This may or may not be used by the CUDA kernel depending on implementation.
+		// Kept for API consistency.
 		simulator.setNumberOfArms(request.getOrDefault("arms", 2));
 		return Map.of("status", "updated");
 	}

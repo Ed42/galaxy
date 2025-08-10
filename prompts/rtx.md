@@ -15,6 +15,7 @@ You will be working with a standard Spring Boot application with the following k
 #### **3. Core Task: Migrate Physics Calculations to the GPU**
 The central task is to replace the CPU-bound and its dependency with a new GPU-powered integrator. `YoshidaIntegrator``Quadtree`
 - **Chosen Technology:** You must use the **JCuda** library, which provides low-level Java bindings for the NVIDIA CUDA Driver API.
+- **jcuda support**: assume the necessary libraries are installed
 - **Architectural Shift:** The simulation loop will be modified as follows:
     1. On simulation start/reset, particle data will be transferred from the JVM to the GPU's VRAM.
     2. On each simulation , the Java backend will invoke a custom CUDA kernel. `tick`
@@ -107,7 +108,7 @@ Modify the to include the necessary JCuda dependencies. Use versions compatible 
 
 #### **5. Final Deliverables**
 Provide the complete, modified source code for the following files:
-1. `pom.xml`
+1. `pom.xml` - it must compile and run using the standard maven commands `mvn spring-boot:run`
 2. `physics/CudaIntegrator.java` (New File)
 3. `simulation/Simulator.java`
 4. `resources/kernels/galaxy_kernel.cu` (New File)

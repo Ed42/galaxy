@@ -15,39 +15,40 @@ import java.util.concurrent.CopyOnWriteArrayList;
 @Component
 public class SimulationSocketHandler extends TextWebSocketHandler {
 
-    private final List<WebSocketSession> sessions = new CopyOnWriteArrayList<>();
-    private final ObjectMapper objectMapper = new ObjectMapper();
+	private final List<WebSocketSession> sessions = new CopyOnWriteArrayList<>();
+	private final ObjectMapper objectMapper = new ObjectMapper();
 
-    @Override
-    public void afterConnectionEstablished(WebSocketSession session) throws Exception {
-        sessions.add(session);
-    }
+	@Override
+	public void afterConnectionEstablished(WebSocketSession session) throws Exception {
+		sessions.add(session);
+	}
 
-    @Override
-    public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
-        sessions.remove(session);
-    }
+	@Override
+	public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
+		sessions.remove(session);
+	}
 
-    public void broadcast(Map<String, Object> state) {
-        if (sessions.isEmpty()) {
-            return;
-        }
-        try {
-            String stateJson = objectMapper.writeValueAsString(state);
-            TextMessage message = new TextMessage(stateJson);
-            for (WebSocketSession session : sessions) {
-                if (session.isOpen()) {
-                    try {
-                        session.sendMessage(message);
-                    } catch (IOException e) {
-                        // Handle exceptions, e.g., client closed connection abruptly
-                        sessions.remove(session);
-                    }
-                }
-            }
-        } catch (IOException e) {
-            // Handle JSON processing exception
-            e.printStackTrace();
-        }
-    }
+	/**
+	 * Broadcasts the simulation state to all connected clients.
+	 * This method is synchronized to prevent multiple threads from sending messages
+	 * concurrently, which would cause an IllegalStateException.
+	 * @param state The simulation state to broadcast.
+	 */
+	public synchronized void broadcast(Map<String, Object> state) {
+		try {
+			String message = objectMapper.writeValueAsString(state);
+			for (WebSocketSession session : sessions) {
+				if (session.isOpen()) {
+					try {
+						session.sendMessage(new TextMessage(message));
+					} catch (IOException e) {
+						// Handle exceptions for a single failed send if necessary
+						System.err.println("Failed to send message to session " + session.getId() + ": " + e.getMessage());
+					}
+				}
+			}
+		} catch (IOException e) {
+			System.err.println("Failed to serialize simulation state: " + e.getMessage());
+		}
+	}
 }
