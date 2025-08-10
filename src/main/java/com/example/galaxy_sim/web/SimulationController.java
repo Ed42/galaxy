@@ -258,13 +258,13 @@ public class SimulationController {
     }
 
 	/**
-	 * Main simulation loop.
-	 * This loop now includes sub-stepping to ensure numerical stability.
+	 * Main simulation loop with sub-stepping and a workload cap for performance.
 	 */
 	private void runSimulation() {
 		long lastRealTime = System.nanoTime();
-		// Define a maximum time step for the integrator to remain stable, in years.
-		final double MAX_STABLE_DT_YEARS = 100.0;
+		final double MAX_STABLE_DT_YEARS = 10000.0;
+		// Cap the work per frame to prevent the backend from lagging at extreme time scales.
+		final int MAX_SUB_STEPS_PER_FRAME = 250;
 
 		while (isRunning && !Thread.currentThread().isInterrupted()) {
 			try {
@@ -272,27 +272,30 @@ public class SimulationController {
 				double realWorldDeltaTime = (currentRealTime - lastRealTime) / 1_000_000_000.0;
 				lastRealTime = currentRealTime;
 
-				// Avoid huge jumps if the thread was paused (e.g., during debugging)
 				if (realWorldDeltaTime > 0.1) {
 					realWorldDeltaTime = 0.1;
 				}
 
 				double timeScale = simulator.getTimeScale();
-				// Total simulation time to advance in this single animation frame
-				double totalFrameTime = realWorldDeltaTime * timeScale;
+				double requestedFrameTime = realWorldDeltaTime * timeScale;
 
-				// Sub-divide the frame's total time into smaller, stable steps
-				int numSubSteps = (int) Math.ceil(totalFrameTime / MAX_STABLE_DT_YEARS);
-				numSubSteps = Math.max(1, numSubSteps); // Ensure at least one step is taken
-				double subStepDt = totalFrameTime / numSubSteps;
+				// Calculate how many stable steps this frame's time would require.
+				int numSubSteps = (int) Math.ceil(requestedFrameTime / MAX_STABLE_DT_YEARS);
+
+				// If the requested number of steps is too high, cap it.
+				if (numSubSteps > MAX_SUB_STEPS_PER_FRAME) {
+					numSubSteps = MAX_SUB_STEPS_PER_FRAME;
+				}
+				numSubSteps = Math.max(1, numSubSteps);
+
+				// Use a stable time step, unless the total requested time is very small.
+				double subStepDt = (requestedFrameTime / numSubSteps < MAX_STABLE_DT_YEARS) ? (requestedFrameTime / numSubSteps) : MAX_STABLE_DT_YEARS;
 
 				for (int i = 0; i < numSubSteps; i++) {
 					if (!isRunning) break;
-					// Advance the simulation by one small, stable time step
 					simulator.step(subStepDt);
 				}
 
-				// Target a frame rate of ~60 FPS for smooth animation
 				Thread.sleep(16);
 
 			} catch (InterruptedException e) {
@@ -304,4 +307,5 @@ public class SimulationController {
 			}
 		}
 		isRunning = false;
-	}}
+	}
+}

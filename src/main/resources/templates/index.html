@@ -277,8 +277,9 @@
                 <!-- Time Scale -->
                 <div class="control-group">
                     <h3>Time Scale</h3>
-                    <input type="range" id="timeScaleSlider" min="100" max="100000000" step="100" value="100" oninput="updateTimeScale()">
-                    <div>Scale: <span id="timeScaleValue">100</span> yr/s</div>
+                    <!-- Changed to onchange to update only when the slider is released -->
+                    <input type="range" id="timeScaleSlider" min="2" max="8" step="0.01" value="5" onchange="updateTimeScale()">
+                    <div>Scale: <span id="timeScaleValue">1.0e+5 yr/s</span></div>
                 </div>
 
                 <!-- Particle Count -->
@@ -560,15 +561,23 @@
             btn.className = fastForward ? 'btn-danger' : 'btn-warning';
         }
 
+        // Control functions
         async function updateTimeScale() {
             const slider = document.getElementById('timeScaleSlider');
-            const value = parseInt(slider.value);
-            document.getElementById('timeScaleValue').textContent = value;
+            // The slider value is now the exponent for a base-10 log scale.
+            const exponent = parseFloat(slider.value);
 
+            // Calculate the actual time scale value (10^exponent).
+            const timeScaleValue = Math.pow(10, exponent);
+
+            // Update the UI label with a nicely formatted number.
+            document.getElementById('timeScaleValue').textContent = timeScaleValue.toExponential(1) + ' yr/s';
+
+            // Send the calculated value to the backend.
             await fetch('/api/timeScale', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ timeScale: value })
+                body: JSON.stringify({ timeScale: timeScaleValue })
             });
         }
 
