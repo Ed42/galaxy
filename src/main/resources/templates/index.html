@@ -65,10 +65,11 @@
         input[type="range"] { width: 100%; margin: 10px 0; }
         input[type="text"] { width: 40px; padding: 4px; border: 1px solid #666; border-radius: 4px; background: #333; color: #fff; font-size: 14px; text-align: right; }
         .input-group { display: flex; align-items: center; justify-content: space-between; margin-top: 5px; }
+        .checkbox-container { display: flex; align-items: center; gap: 8px; margin-top: 10px;}
         .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
         .stat-item { text-align: center; }
         .stat-label { font-size: 12px; color: #aaa; margin-bottom: 5px; text-transform: uppercase; }
-        .stat-value { font-size: 16px; font-weight: bold; color: #4fc3f7; }
+        .stat-value { font-size: 16px; font-weight: bold; color: #4fc3f7; word-wrap: break-word; }
         .legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; font-size: 14px; }
         .legend-color { width: 15px; height: 15px; border-radius: 50%; display: inline-block; border: 1px solid #555; }
     </style>
@@ -108,9 +109,10 @@
                     </div>
                 </div>
                 <div class="control-group">
-                    <h3>Physics Options</h3>
+                    <h3>Physics & Visuals</h3>
                     <div class="checkbox-container"><input type="checkbox" id="barPotentialCheck"><label for="barPotentialCheck">Bar Potential</label></div>
                     <div class="checkbox-container"><input type="checkbox" id="quadtreeOverlayCheck"><label for="quadtreeOverlayCheck">Quadtree Overlay</label></div>
+                    <div class="checkbox-container"><input type="checkbox" id="motionTrailsCheck"><label for="motionTrailsCheck">Motion Trails</label></div>
                     <input type="range" id="quadtreeDepthSlider" min="1" max="15" value="8">
                     <div class="input-group">
                         <label for="quadtreeDepthInput">Depth:</label>
@@ -141,14 +143,15 @@
                     <div class="stat-item"><div class="stat-label">Particles</div><div class="stat-value" id="particleCount">0</div></div>
                     <div class="stat-item"><div class="stat-label">Avg Velocity</div><div class="stat-value" id="avgVelocity">0 km/s</div></div>
                     <div class="stat-item"><div class="stat-label">Avg Distance</div><div class="stat-value" id="avgDistance">0 pc</div></div>
-                    <div class="stat-item" style="grid-column: 1 / -1;"><div class="stat-label">Energy Drift</div><div class="stat-value" id="energyDrift">0.00%</div></div>
+                    <div class="stat-item"><div class="stat-label">Energy</div><div class="stat-value" id="totalEnergy">0</div></div>
+                    <div class="stat-item"><div class="stat-label">Energy Drift</div><div class="stat-value" id="energyDrift">0.00%</div></div>
                 </div>
             </div>
         </div>
     </div>
 </div>
 <script>
-    let canvas, ctx, isRunning = false, showQuadtree = false, zoom = 1.0, offsetX = 0, offsetY = 0, isDragging = false, lastMouseX, lastMouseY, lastFrameTime = 0;
+    let canvas, ctx, isRunning = false, showQuadtree = false, showMotionTrails = false, zoom = 1.0, offsetX = 0, offsetY = 0, isDragging = false, lastMouseX, lastMouseY, lastFrameTime = 0;
     let simulationState = { particles: [], currentTime: 0, energy: 0, energyDrift: 0, particleCount: 0, avgVelocity: 0, avgDistanceToCenter: 0, quadtreeBounds: [], fastForward: false };
     let socket;
 
@@ -217,7 +220,7 @@
         document.getElementById('fastForwardBtn').addEventListener('click', toggleFastForward);
 
         window.addEventListener('keydown', e => {
-            if (e.target.tagName === 'INPUT') return;
+            if (document.activeElement.tagName === 'INPUT') return;
             switch (e.code) {
                 case 'Space': e.preventDefault(); postRequest(isRunning ? '/api/pause' : '/api/start', {}); break;
                 case 'KeyR': e.preventDefault(); postRequest('/api/reset', {}); break;
@@ -225,40 +228,40 @@
             }
         });
 
-        // Two-way binding helper
-        function setupTwoWayBinding(sliderId, inputId, isLog, toApi) {
+        // Two-way binding helper for sliders and text inputs
+        function setupTwoWayBinding(sliderId, inputId, isLog, toApi, isFloat = false) {
             const slider = document.getElementById(sliderId);
             const input = document.getElementById(inputId);
-
             const updateFromSlider = () => {
-                input.value = isLog ? Math.pow(10, parseFloat(slider.value)).toExponential(1) : slider.value;
+                let value = isLog ? Math.pow(10, parseFloat(slider.value)) : parseFloat(slider.value);
+                input.value = isLog ? value.toExponential(1) : (isFloat ? value.toFixed(1) : value);
             };
-
             const updateFromInput = () => {
-                let value = isLog ? parseFloat(input.value) : parseInt(input.value, 10);
-                if (isNaN(value)) return;
+                let value = isLog ? parseFloat(input.value) : (isFloat ? parseFloat(input.value) : parseInt(input.value, 10));
+                if (isNaN(value)) return value; // Return NaN to signal error
                 value = Math.max(Number(slider.min), Math.min(value, Number(slider.max)));
                 slider.value = isLog ? Math.log10(value) : value;
-                if (isLog) { input.value = value.toExponential(1); } else { input.value = value; }
+                input.value = isLog ? value.toExponential(1) : (isFloat ? value.toFixed(1) : value);
+                return value;
             };
-
             slider.addEventListener('input', updateFromSlider);
-            slider.addEventListener('change', () => toApi(isLog ? Math.pow(10, parseFloat(slider.value)) : parseInt(slider.value)));
+            slider.addEventListener('change', () => toApi(isLog ? Math.pow(10, parseFloat(slider.value)) : parseFloat(slider.value)));
             input.addEventListener('change', () => {
-                updateFromInput();
-                toApi(isLog ? parseFloat(input.value) : parseInt(input.value));
+                const value = updateFromInput();
+                if(!isNaN(value)) toApi(value);
             });
-            updateFromSlider();
+            updateFromSlider(); // Initial sync
         }
 
         setupTwoWayBinding('timeScaleSlider', 'timeScaleInput', true, (val) => postRequest('/api/timeScale', { timeScale: val }));
         setupTwoWayBinding('particleCountSlider', 'particleCountInput', false, (val) => postRequest('/api/particleCount', { count: val }));
-        setupTwoWayBinding('quadtreeDepthSlider', 'quadtreeDepthInput', false, (val) => updateQuadtreeSettings());
+        setupTwoWayBinding('quadtreeDepthSlider', 'quadtreeDepthInput', false, (val) => updateQuadtreeSettings(val));
         setupTwoWayBinding('spiralArmSlider', 'spiralArmInput', false, (val) => postRequest('/api/spiralArms', { arms: val }));
-        setupTwoWayBinding('smbhMassSlider', 'smbhMassInput', false, (val) => postRequest('/api/smbhMass', { mass: val }));
+        setupTwoWayBinding('smbhMassSlider', 'smbhMassInput', false, (val) => postRequest('/api/smbhMass', { mass: val }), true);
 
         document.getElementById('barPotentialCheck').addEventListener('change', () => postRequest('/api/barPotential', { enabled: document.getElementById('barPotentialCheck').checked }));
         document.getElementById('quadtreeOverlayCheck').addEventListener('change', updateQuadtreeSettings);
+        document.getElementById('motionTrailsCheck').addEventListener('change', (e) => showMotionTrails = e.target.checked);
     }
 
     async function toggleFastForward() {
@@ -279,22 +282,31 @@
 
     function render() {
         ctx.save();
-        ctx.fillStyle = '#000';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+        // Handle motion trails effect
+        if (showMotionTrails) {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        } else {
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
+        // Center the coordinate system and apply zoom and pan
         ctx.translate(canvas.width / 2, canvas.height / 2);
-        const worldToCanvasScale = (canvas.width / 30000) * zoom;
-        ctx.scale(worldToCanvasScale, worldToCanvasScale);
+        const worldToCanvasScale = (canvas.width / 30000);
+        ctx.scale(zoom * worldToCanvasScale, zoom * worldToCanvasScale);
         ctx.translate(-offsetX, -offsetY);
 
         if (simulationState) {
-            const lineWidth = 1 / worldToCanvasScale;
-            const particleRadius = 1.2 / worldToCanvasScale;
+            const lineWidth = 1 / (zoom * worldToCanvasScale);
+            const particleRadius = 1.2 / (zoom * worldToCanvasScale);
 
             if (showQuadtree && simulationState.quadtreeBounds) renderQuadtree(lineWidth);
             if (simulationState.particles) renderParticles(particleRadius);
             renderSmbh(lineWidth);
         }
+
         ctx.restore();
     }
 
@@ -347,12 +359,11 @@
         }
     }
 
-    function updateQuadtreeSettings() {
+    function updateQuadtreeSettings(depthValue = null) {
         const checkbox = document.getElementById('quadtreeOverlayCheck');
         const slider = document.getElementById('quadtreeDepthSlider');
-        const depth = parseInt(slider.value, 10);
+        const depth = depthValue !== null ? depthValue : parseInt(slider.value, 10);
         showQuadtree = checkbox.checked;
-        document.getElementById('quadtreeDepthInput').value = depth;
         postRequest('/api/quadtree', { enabled: showQuadtree, depth: depth });
     }
 </script>
