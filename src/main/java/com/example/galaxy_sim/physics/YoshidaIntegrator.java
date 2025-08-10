@@ -7,28 +7,19 @@ import java.util.ArrayList;
 
 /**
  * 4th-order symplectic integrator using Yoshida coefficients.
- * Provides excellent energy conservation for Hamiltonian systems.
  */
 public class YoshidaIntegrator {
-	// Yoshida 4th-order coefficients
 	private static final double W1 = 1.0 / (2.0 - Math.pow(2.0, 1.0/3.0));
 	private static final double W0 = -Math.pow(2.0, 1.0/3.0) * W1;
-	private static final double C1 = W1 / 2.0;
-	private static final double C2 = (W0 + W1) / 2.0;
-	private static final double C3 = C2;
-	private static final double C4 = C1;
-	private static final double D1 = W1;
+	private static final double C1 = W1 / 2.0, C4 = C1;
+	private static final double C2 = (W0 + W1) / 2.0, C3 = C2;
+	private static final double D1 = W1, D3 = W1;
 	private static final double D2 = W0;
-	private static final double D3 = W1;
 
-	// The units of G (pc, km/s, M_solar) imply a natural time unit of ~0.978 Myr.
-	// This factor converts dt from Myr into the simulation's internal time unit.
 	private static final double MYR_TO_SYSTEM_TIME = 1.0227;
 
 	private final BackgroundPotential backgroundPotential;
-	private final double G;
-	private final double THETA;
-	private final double SOFTENING;
+	private final double G, THETA, SOFTENING;
 
 	public YoshidaIntegrator(BackgroundPotential backgroundPotential, double G, double theta, double softening) {
 		this.backgroundPotential = backgroundPotential;
@@ -38,31 +29,27 @@ public class YoshidaIntegrator {
 	}
 
 	/**
-	 * Advances all particles by one time step using Yoshida 4th-order method.
+	 * Advances particles by one time step.
 	 * @param dt The time step in Mega-years (Myr).
+	 * @param currentTimeMyr The current simulation time in Mega-years.
 	 */
-	public List<Particle> step(List<Particle> particles, double dt) {
-		// Convert dt from Myr into the consistent system time unit
+	public List<Particle> step(List<Particle> particles, double dt, double currentTimeMyr) {
 		double dt_sys = dt * MYR_TO_SYSTEM_TIME;
 
-		List<Particle> nextStateParticles = new ArrayList<>(particles);
+		List<Particle> p_state = new ArrayList<>(particles);
 
-		// Step 1: Update position by c1*dt, then update velocity by d1*dt
-		nextStateParticles = updatePositions(nextStateParticles, C1 * dt_sys);
-		nextStateParticles = updateVelocities(nextStateParticles, D1 * dt_sys);
+		p_state = updatePositions(p_state, C1 * dt_sys);
+		p_state = updateVelocities(p_state, D1 * dt_sys, currentTimeMyr + C1 * dt);
 
-		// Step 2: Update position by c2*dt, then update velocity by d2*dt
-		nextStateParticles = updatePositions(nextStateParticles, C2 * dt_sys);
-		nextStateParticles = updateVelocities(nextStateParticles, D2 * dt_sys);
+		p_state = updatePositions(p_state, C2 * dt_sys);
+		p_state = updateVelocities(p_state, D2 * dt_sys, currentTimeMyr + C2 * dt);
 
-		// Step 3: Update position by c3*dt, then update velocity by d3*dt
-		nextStateParticles = updatePositions(nextStateParticles, C3 * dt_sys);
-		nextStateParticles = updateVelocities(nextStateParticles, D3 * dt_sys);
+		p_state = updatePositions(p_state, C3 * dt_sys);
+		p_state = updateVelocities(p_state, D3 * dt_sys, currentTimeMyr + C3 * dt);
 
-		// Step 4: Final position update by c4*dt
-		nextStateParticles = updatePositions(nextStateParticles, C4 * dt_sys);
+		p_state = updatePositions(p_state, C4 * dt_sys);
 
-		return nextStateParticles;
+		return p_state;
 	}
 
 	private List<Particle> updatePositions(List<Particle> particles, double dt_sys) {
@@ -75,13 +62,14 @@ public class YoshidaIntegrator {
 		return updated;
 	}
 
-	private List<Particle> updateVelocities(List<Particle> particles, double dt_sys) {
+	private List<Particle> updateVelocities(List<Particle> particles, double dt_sys, double timeForForceCalc) {
 		List<Particle> updated = new ArrayList<>();
 		Quadtree quadtree = buildQuadtree(particles);
 
 		for (Particle p : particles) {
 			Force particleForce = quadtree.calculateForce(p, G, THETA, SOFTENING);
-			Force backgroundForce = backgroundPotential.calculateBackgroundForce(p);
+			// The background force now depends on time for the rotating pattern
+			Force backgroundForce = backgroundPotential.calculateBackgroundForce(p, timeForForceCalc);
 			Force totalForce = particleForce.add(backgroundForce);
 
 			double ax = totalForce.fx() / p.mass();
@@ -106,11 +94,9 @@ public class YoshidaIntegrator {
 			if (p.y() < minY) minY = p.y();
 			if (p.y() > maxY) maxY = p.y();
 		}
-
 		double size = Math.max(maxX - minX, maxY - minY);
 		double centerX = (minX + maxX) / 2.0;
 		double centerY = (minY + maxY) / 2.0;
-
 		Quadtree tree = new Quadtree(centerX, centerY, size * 1.2);
 		for (Particle p : particles) {
 			tree.insert(p);
@@ -119,11 +105,10 @@ public class YoshidaIntegrator {
 	}
 
 	public double calculateTotalEnergy(List<Particle> particles) {
+		if (particles == null || particles.isEmpty()) return 0.0;
 		double kineticEnergy = 0.0;
 		double potentialEnergy = 0.0;
-
 		Quadtree tree = buildQuadtree(particles);
-
 		for (Particle p : particles) {
 			kineticEnergy += 0.5 * p.mass() * (p.vx() * p.vx() + p.vy() * p.vy());
 			potentialEnergy += tree.calculatePotential(p, G, THETA, SOFTENING);
