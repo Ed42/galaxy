@@ -89,6 +89,7 @@
                     <div class="button-group">
                         <button id="playBtn">▶ Start</button>
                         <button id="resetBtn">⟲ Reset</button>
+                        <button id="centerViewBtn">⌖ Center</button>
                         <button id="fastForwardBtn">⏩ FF</button>
                     </div>
                 </div>
@@ -190,6 +191,12 @@
         socket.onerror = (error) => console.error("WebSocket Error:", error);
     }
 
+    function centerView() {
+        offsetX = 0;
+        offsetY = 0;
+        zoom = 1.0;
+    }
+
     function setupEventListeners() {
         const canvasContainer = document.querySelector('.canvas-container');
         const resizeObserver = new ResizeObserver(entries => {
@@ -218,6 +225,7 @@
         document.getElementById('playBtn').addEventListener('click', () => postRequest(isRunning ? '/api/pause' : '/api/start', {}));
         document.getElementById('resetBtn').addEventListener('click', () => postRequest('/api/reset', {}));
         document.getElementById('fastForwardBtn').addEventListener('click', toggleFastForward);
+        document.getElementById('centerViewBtn').addEventListener('click', centerView);
 
         window.addEventListener('keydown', e => {
             if (document.activeElement.tagName === 'INPUT') return;
@@ -225,6 +233,7 @@
                 case 'Space': e.preventDefault(); postRequest(isRunning ? '/api/pause' : '/api/start', {}); break;
                 case 'KeyR': e.preventDefault(); postRequest('/api/reset', {}); break;
                 case 'KeyF': e.preventDefault(); toggleFastForward(); break;
+                case 'KeyC': e.preventDefault(); centerView(); break;
             }
         });
 
@@ -362,7 +371,7 @@
     function updateQuadtreeSettings(depthValue = null) {
         const checkbox = document.getElementById('quadtreeOverlayCheck');
         const slider = document.getElementById('quadtreeDepthSlider');
-        const depth = depthValue !== null ? depthValue : parseInt(slider.value, 10);
+        const depth = depthValue !== null && typeof depthValue === 'number' ? depthValue : parseInt(slider.value, 10);
         showQuadtree = checkbox.checked;
         postRequest('/api/quadtree', { enabled: showQuadtree, depth: depth });
     }

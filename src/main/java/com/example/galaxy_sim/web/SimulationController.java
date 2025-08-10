@@ -82,4 +82,20 @@ public class SimulationController {
 		simulator.setSmbhMass(request.getOrDefault("mass", 4.0) * 1.0e6);
 		return Map.of("status", "updated");
 	}
+
+	@PostMapping("/api/quadtree") @ResponseBody
+	public Map<String, Object> setQuadtreeSettings(@RequestBody Map<String, Object> request) {
+		boolean enabled = (boolean) request.getOrDefault("enabled", false);
+
+		// Safely extract and cast the depth value.
+		int depth = 8; // Default value
+		Object depthValue = request.get("depth");
+		if (depthValue instanceof Number) {
+			depth = ((Number) depthValue).intValue();
+		}
+
+		simulator.setQuadtreeOverlayEnabled(enabled);
+		simulator.setQuadtreeMaxDepth(depth);
+		return Map.of("status", "updated");
+	}
 }
