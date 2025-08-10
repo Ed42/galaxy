@@ -74,9 +74,9 @@ public class BackgroundPotential {
 		double r = Math.sqrt(p.x() * p.x() + p.y() * p.y());
 		if (r < 1e-9) return new Quadtree.Force(0, 0);
 		double theta = Math.atan2(p.y(), p.x());
-		double time_sys = currentTimeMyr * 1.0227;
 		double A = AMP_SPIRAL * diskAcceleration(r) * r;
-		double phase = this.nSpiral * (theta - OMEGA_PATTERN * time_sys) - K_SPIRAL * Math.log(r / A_DISK);
+		// Corrected: Use currentTimeMyr directly as OMEGA_PATTERN is in rad/Myr
+		double phase = this.nSpiral * (theta - OMEGA_PATTERN * currentTimeMyr) - K_SPIRAL * Math.log(r / A_DISK);
 		double Fr = -A * (K_SPIRAL / r) * Math.sin(phase);
 		double F_theta = A * (this.nSpiral / r) * Math.sin(phase);
 		double fx = Fr * Math.cos(theta) - F_theta * Math.sin(theta);
@@ -89,7 +89,8 @@ public class BackgroundPotential {
 		if (r < 1e-9 || r > A_DISK) return new Quadtree.Force(0, 0); // Bar is confined to inner disk
 
 		double theta = Math.atan2(p.y(), p.x());
-		double barAngle = OMEGA_BAR * currentTimeMyr * 1.0227;
+		// Corrected: Use currentTimeMyr directly as OMEGA_BAR is in rad/Myr
+		double barAngle = OMEGA_BAR * currentTimeMyr;
 		double phase = 2 * (theta - barAngle);
 
 		// A simple but effective bar model that applies a force proportional to the disk's gravity
