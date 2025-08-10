@@ -19,6 +19,7 @@
         button { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; transition: background-color 0.3s; background-color: #4fc3f7; color: #000; }
         button:hover { background-color: #81d4fa; }
         input[type="range"] { width: 100%; margin: 10px 0; }
+        input[type="text"] { width: 90px; padding: 4px; border: 1px solid #666; border-radius: 4px; background: #333; color: #fff; font-size: 14px; text-align: right; }
         .input-group { display: flex; align-items: center; justify-content: space-between; margin-top: 5px; }
         .stats-panel { background: #1a1a1a; border-radius: 8px; padding: 20px; margin-top: 20px; }
         .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; }
@@ -48,12 +49,18 @@
             <div class="control-group">
                 <h3>Time Scale</h3>
                 <input type="range" id="timeScaleSlider" min="2" max="8" step="0.01" value="7">
-                <div class="input-group"><span>Scale:</span><span id="timeScaleValue">1.0e+7 yr/s</span></div>
+                <div class="input-group">
+                    <label for="timeScaleInput">Scale (yr/s):</label>
+                    <input type="text" id="timeScaleInput">
+                </div>
             </div>
             <div class="control-group">
                 <h3>Particle Count</h3>
                 <input type="range" id="particleCountSlider" min="1000" max="50000" step="100" value="10000">
-                <div class="input-group"><span>Count:</span><span id="particleCountValue">10000</span></div>
+                <div class="input-group">
+                    <label for="particleCountInput">Count:</label>
+                    <input type="text" id="particleCountInput">
+                </div>
             </div>
             <div class="control-group">
                 <h3>Physics Options</h3>
@@ -138,9 +145,9 @@
         canvas.addEventListener('mouseleave', () => isDragging = false);
         canvas.addEventListener('mousemove', e => {
             if (isDragging) {
-                const worldWidth = canvas.width / zoom;
-                offsetX += (e.clientX - lastMouseX) * (30000 / canvas.width / zoom);
-                offsetY -= (e.clientY - lastMouseY) * (30000 / canvas.height / zoom);
+                const worldToCanvasScale = (canvas.width / 30000) * zoom;
+                offsetX -= (e.clientX - lastMouseX) / worldToCanvasScale;
+                offsetY += (e.clientY - lastMouseY) / worldToCanvasScale;
                 lastMouseX = e.clientX;
                 lastMouseY = e.clientY;
             }
@@ -150,30 +157,55 @@
         document.getElementById('playBtn').addEventListener('click', () => postRequest(isRunning ? '/api/pause' : '/api/start', {}));
         document.getElementById('resetBtn').addEventListener('click', () => postRequest('/api/reset', {}));
 
+        // Time Scale Input & Slider
         const timeSlider = document.getElementById('timeScaleSlider');
-        const timeValue = document.getElementById('timeScaleValue');
-        const updateTimeDisplay = () => timeValue.textContent = `${Math.pow(10, parseFloat(timeSlider.value)).toExponential(1)} yr/s`;
-        timeSlider.addEventListener('input', updateTimeDisplay);
-        timeSlider.addEventListener('change', () => postRequest('/api/timeScale', { timeScale: Math.pow(10, parseFloat(timeSlider.value)) }));
-        updateTimeDisplay();
+        const timeInput = document.getElementById('timeScaleInput');
+        timeSlider.addEventListener('input', () => {
+            timeInput.value = Math.pow(10, parseFloat(timeSlider.value)).toExponential(1);
+        });
+        timeSlider.addEventListener('change', () => {
+            postRequest('/api/timeScale', { timeScale: Math.pow(10, parseFloat(timeSlider.value)) });
+        });
+        timeInput.addEventListener('change', () => {
+            const value = parseFloat(timeInput.value);
+            if (!isNaN(value) && value > 0) {
+                timeSlider.value = Math.log10(value);
+                postRequest('/api/timeScale', { timeScale: value });
+            }
+        });
+        timeInput.value = Math.pow(10, parseFloat(timeSlider.value)).toExponential(1);
 
+        // Particle Count Input & Slider
         const countSlider = document.getElementById('particleCountSlider');
-        const countValue = document.getElementById('particleCountValue');
-        const updateCountDisplay = () => countValue.textContent = countSlider.value;
-        countSlider.addEventListener('input', updateCountDisplay);
-        countSlider.addEventListener('change', () => postRequest('/api/particleCount', { count: parseInt(countSlider.value, 10) }));
-        updateCountDisplay();
+        const countInput = document.getElementById('particleCountInput');
+        countSlider.addEventListener('input', () => {
+            countInput.value = countSlider.value;
+        });
+        countSlider.addEventListener('change', () => {
+            postRequest('/api/particleCount', { count: parseInt(countSlider.value, 10) });
+        });
+        countInput.addEventListener('change', () => {
+            let value = parseInt(countInput.value, 10);
+            if (isNaN(value)) value = 1000;
+            value = Math.max(parseInt(countSlider.min), Math.min(value, parseInt(countSlider.max)));
+            countInput.value = value;
+            countSlider.value = value;
+            postRequest('/api/particleCount', { count: value });
+        });
+        countInput.value = countSlider.value;
 
+        // Other controls
         document.getElementById('quadtreeOverlayCheck').addEventListener('change', updateQuadtreeSettings);
         document.getElementById('quadtreeDepthSlider').addEventListener('input', updateQuadtreeSettings);
         document.getElementById('barPotentialCheck').addEventListener('change', () => postRequest('/api/barPotential', { enabled: document.getElementById('barPotentialCheck').checked }));
 
         const armSlider = document.getElementById('spiralArmSlider');
         const armValue = document.getElementById('spiralArmValue');
-        const updateArmDisplay = () => armValue.textContent = armSlider.value;
-        armSlider.addEventListener('input', updateArmDisplay);
-        armSlider.addEventListener('change', () => postRequest('/api/spiralArms', { arms: parseInt(armSlider.value, 10) }));
-        updateArmDisplay();
+        armSlider.addEventListener('input', () => armValue.textContent = armSlider.value);
+        armSlider.addEventListener('change', () => {
+            postRequest('/api/spiralArms', { arms: parseInt(armSlider.value, 10) });
+        });
+        armValue.textContent = armSlider.value;
     }
 
     function startAnimationLoop() {
@@ -190,20 +222,18 @@
 
     function render() {
         ctx.save();
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.fillStyle = '#000';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // Set up the coordinate system
+        // Center the coordinate system and apply zoom and pan
         ctx.translate(canvas.width / 2, canvas.height / 2);
-        ctx.scale(zoom, zoom);
-        const scale = (canvas.width / 30000);
-        ctx.scale(scale, -scale); // Flip Y-axis for standard math coordinates
+        const worldToCanvasScale = (canvas.width / 30000) * zoom;
+        ctx.scale(worldToCanvasScale, worldToCanvasScale);
         ctx.translate(-offsetX, -offsetY);
 
         if (simulationState) {
-            const lineWidth = 1 / zoom / scale;
-            const particleRadius = 1.2 / zoom / scale;
+            const lineWidth = 1 / worldToCanvasScale;
+            const particleRadius = 1.2 / worldToCanvasScale;
 
             if (showQuadtree && simulationState.quadtreeBounds) renderQuadtree(lineWidth);
             if (simulationState.particles) renderParticles(particleRadius);
@@ -220,7 +250,7 @@
             const pX = particles[i], pY = particles[i + 1], pType = particles[i + 2];
             ctx.fillStyle = pType === 1 ? '#ffca28' : '#42a5f5';
             ctx.beginPath();
-            ctx.arc(pX, pY, radius, 0, 2 * Math.PI);
+            ctx.arc(pX, -pY, radius, 0, 2 * Math.PI); // Invert Y for standard math coordinates
             ctx.fill();
         }
         ctx.globalAlpha = 1.0;
@@ -240,7 +270,7 @@
         ctx.strokeStyle = 'rgba(0, 255, 0, 0.3)';
         ctx.lineWidth = lineWidth;
         simulationState.quadtreeBounds.forEach(b => {
-            ctx.strokeRect(b.x - b.size, b.y - b.size, b.size * 2, b.size * 2);
+            ctx.strokeRect(b.x - b.size, -(b.y + b.size), b.size * 2, b.size * 2);
         });
     }
 
