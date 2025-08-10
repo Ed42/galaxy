@@ -20,8 +20,8 @@ public class Simulator {
 	private double currentTime = 0;
 	private double initialEnergy = 0;
 	private boolean fastForward = false;
-	private int particleCount = 1000;
-	private double timeScale = 100000.0;
+	private int particleCount = 10000;
+	private double timeScale = 1.0e7;
 
 	private final YoshidaIntegrator integrator;
 	private final BackgroundPotential backgroundPotential;
@@ -42,7 +42,7 @@ public class Simulator {
 	public void reset() {
 		this.particles = initializeParticles(this.particleCount);
 		this.currentTime = 0;
-		try { Thread.sleep(10); } catch (InterruptedException e) {}
+		try { Thread.sleep(10); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
 		this.initialEnergy = this.integrator.calculateTotalEnergy(this.particles);
 	}
 
@@ -83,8 +83,9 @@ public class Simulator {
 	}
 
 	public double getEnergyDrift() {
-		if (initialEnergy == 0) return 0;
-		return (this.integrator.calculateTotalEnergy(this.particles) - initialEnergy) / initialEnergy;
+		if (initialEnergy == 0) return 0.0;
+		double currentEnergy = this.integrator.calculateTotalEnergy(this.particles);
+		return (initialEnergy == 0) ? 0.0 : (currentEnergy - initialEnergy) / initialEnergy;
 	}
 	public double getCurrentEnergy() { return this.integrator.calculateTotalEnergy(this.particles); }
 	public List<Particle> getParticles() { return particles; }
@@ -95,7 +96,10 @@ public class Simulator {
 	public boolean isFastForward() { return fastForward; }
 	public void setFastForward(boolean ff) { this.fastForward = ff; }
 	public void setBarEnabled(boolean enabled) { this.backgroundPotential.setBarEnabled(enabled); }
-	public void setParticleCount(int count) { this.particleCount = count; reset(); }
+	public void setParticleCount(int count) {
+		this.particleCount = count;
+		this.reset();
+	}
 	public boolean isQuadtreeOverlayEnabled() { return quadtreeOverlayEnabled; }
 	public void setQuadtreeOverlayEnabled(boolean enabled) { this.quadtreeOverlayEnabled = enabled; }
 	public void setQuadtreeMaxDepth(int depth) { this.quadtreeMaxDepth = depth; }
@@ -105,11 +109,7 @@ public class Simulator {
 		Quadtree tree = integrator.getLastBuiltTree();
 		if (tree != null) {
 			List<Quadtree.Bounds> allBounds = tree.getBounds(this.quadtreeMaxDepth);
-			final double viewRadius = 30000; // 30 kpc view distance
-			// ** THE FIX IS HERE **
-			// This improved filter checks for box intersection, not just whether the
-			// center is in view. This prevents the grid from disappearing when it gets
-			// very large due to ejected particles.
+			final double viewRadius = 30000;
 			return allBounds.stream()
 				.filter(b -> (b.x() - b.size() < viewRadius) && (b.x() + b.size() > -viewRadius) &&
 					(b.y() - b.size() < viewRadius) && (b.y() + b.size() > -viewRadius))
