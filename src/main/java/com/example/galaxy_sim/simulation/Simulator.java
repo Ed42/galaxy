@@ -5,6 +5,7 @@ import com.example.galaxy_sim.physics.BackgroundPotential;
 import com.example.galaxy_sim.physics.Quadtree;
 import com.example.galaxy_sim.physics.YoshidaIntegrator;
 import org.springframework.stereotype.Component;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
@@ -21,10 +22,13 @@ public class Simulator {
 	private boolean fastForward = false;
 	private int particleCount = 1000;
 	private double timeScale = 100000.0;
+
 	private final YoshidaIntegrator integrator;
 	private final BackgroundPotential backgroundPotential;
+
 	private boolean quadtreeOverlayEnabled = false;
 	private int quadtreeMaxDepth = 8;
+
 	private static final double G = 4.30091e-3;
 	private static final double THETA = 0.7;
 	private static final double SOFTENING = 15.0;
@@ -100,9 +104,15 @@ public class Simulator {
 	public List<Quadtree.Bounds> getQuadtreeBounds() {
 		Quadtree tree = integrator.getLastBuiltTree();
 		if (tree != null) {
-			final double viewRadius = 30000;
-			return tree.getBounds(this.quadtreeMaxDepth).stream()
-				.filter(b -> Math.abs(b.x()) < viewRadius && Math.abs(b.y()) < viewRadius)
+			List<Quadtree.Bounds> allBounds = tree.getBounds(this.quadtreeMaxDepth);
+			final double viewRadius = 30000; // 30 kpc view distance
+			// ** THE FIX IS HERE **
+			// This improved filter checks for box intersection, not just whether the
+			// center is in view. This prevents the grid from disappearing when it gets
+			// very large due to ejected particles.
+			return allBounds.stream()
+				.filter(b -> (b.x() - b.size() < viewRadius) && (b.x() + b.size() > -viewRadius) &&
+					(b.y() - b.size() < viewRadius) && (b.y() + b.size() > -viewRadius))
 				.collect(Collectors.toList());
 		}
 		return new ArrayList<>();

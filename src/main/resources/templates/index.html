@@ -80,16 +80,39 @@
 <script>
     let canvas, ctx, isRunning = false, showQuadtree = false, zoom = 1.0, offsetX = 0, offsetY = 0, isDragging = false, lastMouseX, lastMouseY, lastFrameTime = 0;
     let simulationState = { particles: [], currentTime: 0, energy: 0, energyDrift: 0, particleCount: 0, avgVelocity: 0, avgDistanceToCenter: 0 };
+    let socket;
 
     window.onload = () => {
         canvas = document.getElementById('galaxyCanvas');
         ctx = canvas.getContext('2d');
         setupEventListeners();
         startAnimationLoop();
-        setInterval(updateSimulationData, 200);
-        setInterval(updateUI, 1000);
-        updateQuadtreeSettings();
+        connectWebSocket();
     };
+
+    function connectWebSocket() {
+        const socketUrl = "ws://" + window.location.host + "/simulation-socket";
+        socket = new WebSocket(socketUrl);
+
+        socket.onmessage = (event) => {
+            simulationState = JSON.parse(event.data);
+            if (isRunning !== simulationState.isRunning) {
+                isRunning = simulationState.isRunning;
+                document.getElementById('playBtn').textContent = isRunning ? '⏸ Pause' : '▶ Start';
+            }
+            // Update the text-based stats immediately when new data arrives.
+            updateUI();
+        };
+
+        socket.onclose = () => {
+            console.log("WebSocket disconnected. Attempting to reconnect...");
+            setTimeout(connectWebSocket, 2000); // Reconnect after 2 seconds
+        };
+
+        socket.onerror = (error) => {
+            console.error("WebSocket Error:", error);
+        };
+    }
 
     function setupEventListeners() {
         canvas.addEventListener('mousedown', e => { isDragging = true; lastMouseX = e.clientX; lastMouseY = e.clientY; });
@@ -132,12 +155,10 @@
         });
 
         document.getElementById('quadtreeOverlayCheck').addEventListener('change', updateQuadtreeSettings);
-        document.getElementById('quadtreeDepthSlider').addEventListener('change', updateQuadtreeSettings);
+        document.getElementById('quadtreeDepthSlider').addEventListener('input', updateQuadtreeSettings);
         document.getElementById('barPotentialCheck').addEventListener('change', () => postRequest('/api/barPotential', { enabled: document.getElementById('barPotentialCheck').checked }));
-
-        const armSlider = document.getElementById('spiralArmSlider');
-        armSlider.addEventListener('change', () => {
-            const arms = parseInt(armSlider.value, 10);
+        document.getElementById('spiralArmSlider').addEventListener('change', () => {
+            const arms = parseInt(document.getElementById('spiralArmSlider').value, 10);
             document.getElementById('spiralArmValue').textContent = arms;
             postRequest('/api/spiralArms', { arms: arms });
         });
@@ -145,20 +166,14 @@
 
     function startAnimationLoop() {
         const animate = t => {
-            if (lastFrameTime > 0) document.getElementById('fps-counter').textContent = `FPS: ${Math.round(1000 / (t - lastFrameTime))}`;
+            if (lastFrameTime > 0) {
+                document.getElementById('fps-counter').textContent = `FPS: ${Math.round(1000 / (t - lastFrameTime))}`;
+            }
             lastFrameTime = t;
             render();
             requestAnimationFrame(animate);
         };
         requestAnimationFrame(animate);
-    }
-
-    async function updateSimulationData() {
-        try {
-            const res = await fetch('/api/state');
-            simulationState = await res.json();
-            isRunning = simulationState.isRunning;
-        } catch (e) { console.error('Error fetching state:', e); }
     }
 
     function render() {
@@ -172,25 +187,35 @@
     }
 
     function renderParticles(particles) {
-        const scale = (canvas.width / 30000) * zoom, centerX = canvas.width / 2, centerY = canvas.height / 2;
+        const scale = (canvas.width / 30000) * zoom;
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
         ctx.globalAlpha = 0.8;
-        particles.forEach(p => {
-            const screenX = centerX + (p.x - offsetX) * scale, screenY = centerY - (p.y - offsetY) * scale;
-            if (screenX < -5 || screenX > canvas.width + 5 || screenY < -5 || screenY > canvas.height + 5) return;
-            ctx.fillStyle = p.type === 'GIANT' ? '#ffca28' : '#42a5f5';
+        for (let i = 0; i < particles.length; i += 3) {
+            const pX = particles[i];
+            const pY = particles[i + 1];
+            const pType = particles[i + 2];
+            const screenX = centerX + (pX - offsetX) * scale;
+            const screenY = centerY - (pY - offsetY) * scale;
+            if (screenX < -5 || screenX > canvas.width + 5 || screenY < -5 || screenY > canvas.height + 5) continue;
+            ctx.fillStyle = pType === 1 ? '#ffca28' : '#42a5f5';
             ctx.beginPath();
             ctx.arc(screenX, screenY, Math.max(0.5, 1.2 * zoom), 0, 2 * Math.PI);
             ctx.fill();
-        });
+        }
         ctx.globalAlpha = 1.0;
     }
 
     function renderQuadtree(bounds) {
-        const scale = (canvas.width / 30000) * zoom, centerX = canvas.width / 2, centerY = canvas.height / 2;
+        const scale = (canvas.width / 30000) * zoom;
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
         ctx.strokeStyle = 'rgba(0, 255, 0, 0.3)';
         ctx.lineWidth = 1;
         bounds.forEach(b => {
-            const w = b.size * 2 * scale, x = centerX + (b.x - b.size - offsetX) * scale, y = centerY - (b.y + b.size - offsetY) * scale;
+            const w = b.size * 2 * scale;
+            const x = centerX + (b.x - b.size - offsetX) * scale;
+            const y = centerY - (b.y + b.size - offsetY) * scale;
             ctx.strokeRect(x, y, w, w);
         });
     }
@@ -198,7 +223,7 @@
     function updateUI() {
         if (!simulationState) return;
         document.getElementById('simTime').textContent = `${(simulationState.currentTime / 1e6).toFixed(2)} Myr`;
-        document.getElementById('totalEnergy').textContent = simulationState.energy.toExponential(2);
+        document.getElementById('totalEnergy').textContent = simulationState.energy ? simulationState.energy.toExponential(2) : '0';
         document.getElementById('energyDrift').textContent = `${(simulationState.energyDrift * 100).toFixed(3)}%`;
         document.getElementById('particleCount').textContent = simulationState.particleCount;
         document.getElementById('avgVelocity').textContent = `${Math.round(simulationState.avgVelocity)} km/s`;
@@ -210,18 +235,16 @@
     }
 
     async function toggleSimulation() {
-        const btn = document.getElementById('playBtn');
         await postRequest(isRunning ? '/api/pause' : '/api/start', {});
-        isRunning = !isRunning;
-        btn.textContent = isRunning ? '⏸ Pause' : '▶ Start';
     }
 
-    async function updateQuadtreeSettings() {
-        const checkbox = document.getElementById('quadtreeOverlayCheck'), slider = document.getElementById('quadtreeDepthSlider');
+    function updateQuadtreeSettings() {
+        const checkbox = document.getElementById('quadtreeOverlayCheck');
+        const slider = document.getElementById('quadtreeDepthSlider');
         const depth = parseInt(slider.value, 10);
         showQuadtree = checkbox.checked;
         document.getElementById('quadtreeDepthValue').textContent = depth;
-        await postRequest('/api/quadtree', { enabled: showQuadtree, depth: depth });
+        postRequest('/api/quadtree', { enabled: showQuadtree, depth: depth });
     }
 </script>
 </body>

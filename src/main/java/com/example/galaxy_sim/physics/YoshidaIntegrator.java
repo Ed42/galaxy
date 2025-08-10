@@ -2,14 +2,13 @@ package com.example.galaxy_sim.physics;
 
 import com.example.galaxy_sim.model.Particle;
 import com.example.galaxy_sim.physics.Quadtree.Force;
-
 import java.util.List;
 import java.util.ArrayList;
 import java.util.stream.Collectors;
 
 /**
- * A 4th-order symplectic integrator that uses parallel processing
- * to significantly speed up force calculations on multi-core systems.
+ * A 4th-order symplectic integrator that uses parallel streams
+ * to accelerate force calculations on multi-core systems.
  */
 public class YoshidaIntegrator {
 	// Yoshida 4th-order coefficients
@@ -49,23 +48,13 @@ public class YoshidaIntegrator {
 	}
 
 	private List<Particle> updatePositions(List<Particle> particles, double dt_sys) {
-		// This operation is simple and fast; parallelizing it has little benefit
-		// but is done for consistency.
 		return particles.parallelStream()
-			.map(p -> new Particle(
-				p.x() + p.vx() * dt_sys,
-				p.y() + p.vy() * dt_sys,
-				p.vx(), p.vy(), p.mass(), p.stellarType(), p.age(), p.metallicity(), p.habitable(), p.distanceToSMBH()
-			))
+			.map(p -> new Particle(p.x() + p.vx() * dt_sys, p.y() + p.vy() * dt_sys, p.vx(), p.vy(), p.mass(), p.stellarType(), p.age(), p.metallicity(), p.habitable(), p.distanceToSMBH()))
 			.collect(Collectors.toList());
 	}
 
 	private List<Particle> updateVelocities(List<Particle> particles, double dt_sys, double timeForForceCalc) {
 		this.lastBuiltTree = buildQuadtree(particles);
-
-		// ** THE FIX IS HERE **
-		// This is the primary bottleneck. Using a parallel stream distributes the workload
-		// of force calculation across all available CPU cores.
 		return particles.parallelStream()
 			.map(p -> {
 				Force particleForce = lastBuiltTree.calculateForce(p, G, THETA, SOFTENING);
@@ -111,11 +100,9 @@ public class YoshidaIntegrator {
 	public double calculateTotalEnergy(List<Particle> particles) {
 		if (particles == null || particles.isEmpty()) return 0.0;
 		this.lastBuiltTree = buildQuadtree(particles);
-		// Also parallelize energy calculation for consistency
 		return particles.parallelStream()
 			.mapToDouble(p -> {
 				double kineticEnergy = 0.5 * p.mass() * (p.vx() * p.vx() + p.vy() * p.vy());
-				// The potential is calculated per pair, so we divide by 2 later.
 				double potentialEnergy = lastBuiltTree.calculatePotential(p, G, THETA, SOFTENING);
 				return kineticEnergy + potentialEnergy;
 			})
