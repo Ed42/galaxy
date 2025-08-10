@@ -5,9 +5,11 @@ import com.example.galaxy_sim.physics.BackgroundPotential;
 import com.example.galaxy_sim.physics.Quadtree;
 import com.example.galaxy_sim.physics.YoshidaIntegrator;
 import org.springframework.stereotype.Component;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import java.util.stream.Collectors;
 
 /**
  * Manages the state and progression of the galaxy simulation.
@@ -99,10 +101,21 @@ public class Simulator {
 	public void setQuadtreeOverlayEnabled(boolean enabled) { this.quadtreeOverlayEnabled = enabled; }
 	public void setQuadtreeMaxDepth(int depth) { this.quadtreeMaxDepth = depth; }
 
+	/**
+	 * Gets the quadtree boundaries for visualization, filtering out distant cells
+	 * to keep the overlay focused on the main galaxy.
+	 */
 	public List<Quadtree.Bounds> getQuadtreeBounds() {
 		Quadtree tree = integrator.getLastBuiltTree();
 		if (tree != null) {
-			return tree.getBounds(this.quadtreeMaxDepth);
+			List<Quadtree.Bounds> allBounds = tree.getBounds(this.quadtreeMaxDepth);
+			// ** THE FIX IS HERE **
+			// Filter the bounds to only show those near the main galaxy, preventing
+			// the view from being dominated by ejected particles.
+			final double viewRadius = 30000; // 30 kpc view distance
+			return allBounds.stream()
+				.filter(b -> Math.abs(b.x()) < viewRadius && Math.abs(b.y()) < viewRadius)
+				.collect(Collectors.toList());
 		}
 		return new ArrayList<>();
 	}

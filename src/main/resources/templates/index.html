@@ -26,7 +26,9 @@
         .btn-secondary { background: #666; color: #fff; }
         .btn-secondary:hover { background: #555; }
         input[type="range"] { width: 100%; margin: 10px 0; }
+        input[type="text"] { width: 90px; padding: 4px; border: 1px solid #666; border-radius: 4px; background: #333; color: #fff; font-size: 14px; }
         .checkbox-container { display: flex; align-items: center; gap: 8px; margin: 10px 0; }
+        .input-group { display: flex; align-items: center; gap: 8px; margin-top: 5px; }
         .stats-panel { background: #1a1a1a; border-radius: 8px; padding: 20px; margin-top: 20px; }
         .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; }
         .stat-item { text-align: center; }
@@ -62,34 +64,41 @@
             <div class="control-group">
                 <h3>Simulation Control</h3>
                 <div class="button-group">
-                    <button id="playBtn" class="btn-primary" onclick="toggleSimulation()">▶ Start</button>
-                    <button id="resetBtn" class="btn-danger" onclick="resetSimulation()">⟲ Reset</button>
+                    <button id="playBtn">▶ Start</button>
+                    <button id="resetBtn">⟲ Reset</button>
                 </div>
                 <div class="button-group">
-                    <button id="fastForwardBtn" class="btn-warning" onclick="toggleFastForward()">⏩ Fast Forward</button>
+                    <button id="fastForwardBtn">⏩ Fast Forward</button>
                 </div>
             </div>
             <div class="control-group">
                 <h3>Time Scale</h3>
-                <input type="range" id="timeScaleSlider" min="2" max="8" step="0.01" value="5" onchange="updateTimeScale()">
-                <div>Scale: <span id="timeScaleValue">1.0e+5 yr/s</span></div>
+                <input type="range" id="timeScaleSlider" min="2" max="8" step="0.01" value="5">
+                <div class="input-group">
+                    <label for="timeScaleInput">Scale:</label>
+                    <input type="text" id="timeScaleInput" size="10">
+                    <span>yr/s</span>
+                </div>
             </div>
             <div class="control-group">
                 <h3>Particle Count</h3>
-                <input type="range" id="particleCountSlider" min="100" max="50000" step="100" value="1000" onchange="updateParticleCount()">
-                <div>Count: <span id="particleCountValue">1000</span></div>
+                <input type="range" id="particleCountSlider" min="100" max="50000" step="100" value="1000">
+                <div class="input-group">
+                    <label for="particleCountInput">Count:</label>
+                    <input type="text" id="particleCountInput" size="10">
+                </div>
             </div>
             <div class="control-group">
                 <h3>Physics Options</h3>
                 <div class="checkbox-container">
-                    <input type="checkbox" id="barPotentialCheck" onchange="toggleBarPotential()">
+                    <input type="checkbox" id="barPotentialCheck">
                     <label for="barPotentialCheck">Bar Potential</label>
                 </div>
                 <div class="checkbox-container">
-                    <input type="checkbox" id="quadtreeOverlayCheck" onchange="updateQuadtreeSettings()">
+                    <input type="checkbox" id="quadtreeOverlayCheck">
                     <label for="quadtreeOverlayCheck">Quadtree Overlay</label>
                 </div>
-                <input type="range" id="quadtreeDepthSlider" min="1" max="15" value="8" onchange="updateQuadtreeSettings()">
+                <input type="range" id="quadtreeDepthSlider" min="1" max="15" value="8">
                 <div>Depth: <span id="quadtreeDepthValue">8</span></div>
             </div>
         </div>
@@ -110,20 +119,20 @@
     let canvas, ctx, isRunning = false, fastForward = false, showQuadtree = false;
     let zoom = 1.0, offsetX = 0, offsetY = 0;
     let isDragging = false, lastMouseX, lastMouseY;
-    let lastFrameTime = 0, fps = 0;
+    let lastFrameTime = 0;
     let simulationState = { particles: [], currentTime: 0, energy: 0, energyDrift: 0, particleCount: 0, avgVelocity: 0, avgDistanceToCenter: 0 };
 
     window.onload = function() {
         canvas = document.getElementById('galaxyCanvas');
         ctx = canvas.getContext('2d');
-        setupCanvasInteraction();
+        setupEventListeners();
         startAnimationLoop();
         setInterval(updateSimulationData, 200);
         setInterval(updateUI, 1000);
-        updateQuadtreeSettings(); // Set initial state
     };
 
-    function setupCanvasInteraction() {
+    function setupEventListeners() {
+        // Canvas interactions
         canvas.addEventListener('mousedown', e => { isDragging = true; lastMouseX = e.clientX; lastMouseY = e.clientY; });
         canvas.addEventListener('mouseup', () => isDragging = false);
         canvas.addEventListener('mouseleave', () => isDragging = false);
@@ -138,6 +147,58 @@
             e.preventDefault();
             zoom *= e.deltaY > 0 ? 0.9 : 1.1;
             zoom = Math.max(0.1, Math.min(20, zoom));
+        });
+
+        // --- UI Control Listeners ---
+        document.getElementById('playBtn').addEventListener('click', toggleSimulation);
+        document.getElementById('resetBtn').addEventListener('click', resetSimulation);
+        document.getElementById('fastForwardBtn').addEventListener('click', toggleFastForward);
+        document.getElementById('barPotentialCheck').addEventListener('change', toggleBarPotential);
+        document.getElementById('quadtreeOverlayCheck').addEventListener('change', updateQuadtreeSettings);
+        document.getElementById('quadtreeDepthSlider').addEventListener('change', updateQuadtreeSettings);
+
+        // --- Time Scale Controls (Slider and Text Input) ---
+        const timeScaleSlider = document.getElementById('timeScaleSlider');
+        const timeScaleInput = document.getElementById('timeScaleInput');
+        timeScaleInput.value = Math.pow(10, parseFloat(timeScaleSlider.value)).toExponential(1);
+
+        timeScaleSlider.addEventListener('input', () => {
+            timeScaleInput.value = Math.pow(10, parseFloat(timeScaleSlider.value)).toExponential(1);
+        });
+        timeScaleSlider.addEventListener('change', () => {
+            postRequest('/api/timeScale', { timeScale: Math.pow(10, parseFloat(timeScaleSlider.value)) });
+        });
+        timeScaleInput.addEventListener('change', () => {
+            const value = parseFloat(timeScaleInput.value);
+            if (!isNaN(value) && value > 0) {
+                postRequest('/api/timeScale', { timeScale: value });
+                timeScaleSlider.value = Math.log10(value);
+            }
+            timeScaleInput.value = Math.pow(10, parseFloat(timeScaleSlider.value)).toExponential(1);
+        });
+
+        // --- Particle Count Controls (Slider and Text Input) ---
+        const particleCountSlider = document.getElementById('particleCountSlider');
+        const particleCountInput = document.getElementById('particleCountInput');
+        particleCountInput.value = particleCountSlider.value;
+
+        particleCountSlider.addEventListener('input', () => {
+            particleCountInput.value = particleCountSlider.value;
+        });
+        particleCountSlider.addEventListener('change', () => {
+            postRequest('/api/particleCount', { count: parseInt(particleCountSlider.value, 10) });
+        });
+        particleCountInput.addEventListener('change', () => {
+            let value = parseInt(particleCountInput.value, 10);
+            if (isNaN(value)) {
+                value = parseInt(particleCountSlider.value, 10);
+            }
+            const min = parseInt(particleCountSlider.min, 10);
+            const max = parseInt(particleCountSlider.max, 10);
+            value = Math.max(min, Math.min(value, max));
+            particleCountInput.value = value;
+            particleCountSlider.value = value;
+            postRequest('/api/particleCount', { count: value });
         });
     }
 
@@ -156,7 +217,6 @@
             const response = await fetch('/api/state');
             simulationState = await response.json();
             isRunning = simulationState.isRunning || false;
-            fastForward = simulationState.fastForward || false;
         } catch (error) { console.error('Error fetching state:', error); }
     }
 
@@ -233,28 +293,16 @@
     }
     async function resetSimulation() { await postRequest('/api/reset', {}); }
     async function toggleFastForward() {
-        fastForward = !fastForward;
+        fastForward = !document.getElementById('fastForwardBtn').classList.contains('btn-danger');
         await postRequest('/api/fastForward', { enabled: fastForward });
         document.getElementById('fastForwardBtn').className = fastForward ? 'btn-danger' : 'btn-warning';
-    }
-    async function updateTimeScale() {
-        const slider = document.getElementById('timeScaleSlider');
-        const value = Math.pow(10, parseFloat(slider.value));
-        document.getElementById('timeScaleValue').textContent = `${value.toExponential(1)} yr/s`;
-        await postRequest('/api/timeScale', { timeScale: value });
-    }
-    async function updateParticleCount() {
-        const slider = document.getElementById('particleCountSlider');
-        const value = parseInt(slider.value);
-        document.getElementById('particleCountValue').textContent = value;
-        await postRequest('/api/particleCount', { count: value });
     }
     async function toggleBarPotential() { await postRequest('/api/barPotential', { enabled: document.getElementById('barPotentialCheck').checked }); }
 
     async function updateQuadtreeSettings() {
         const checkbox = document.getElementById('quadtreeOverlayCheck');
         const slider = document.getElementById('quadtreeDepthSlider');
-        const depth = parseInt(slider.value);
+        const depth = parseInt(slider.value, 10);
         showQuadtree = checkbox.checked;
         document.getElementById('quadtreeDepthValue').textContent = depth;
         await postRequest('/api/quadtree', { enabled: showQuadtree, depth: depth });
