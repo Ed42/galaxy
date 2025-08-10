@@ -1,6 +1,5 @@
 package com.example.galaxy_sim.simulation;
 
-import com.example.galaxy_sim.physics.Quadtree;
 import com.example.galaxy_sim.web.SimulationSocketHandler;
 import jakarta.annotation.PreDestroy;
 import org.springframework.beans.factory.annotation.Autowired;

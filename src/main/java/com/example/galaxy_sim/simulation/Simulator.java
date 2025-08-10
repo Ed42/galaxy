@@ -16,7 +16,7 @@ public class Simulator {
 	private double initialEnergy = 0;
 	private boolean fastForward = false;
 	private int particleCount = 10000;
-	private double timeScale = 1.0e7;
+	private double timeScale = 1.0e6; // Reduced for stability
 
 	private final CudaIntegrator integrator;
 	private final BackgroundPotential backgroundPotential; // Used for initialization only
@@ -104,7 +104,6 @@ public class Simulator {
 	}
 
 	private List<Particle> initializeParticles(int count) {
-		// This method remains unchanged
 		List<Particle> newParticles = new ArrayList<>();
 		Random rand = new Random();
 		double diskRadius = 15000.0, bulgeRadius = 3000.0;
@@ -116,8 +115,9 @@ public class Simulator {
 			double x = r * Math.cos(theta), y = r * Math.sin(theta);
 			Quadtree.Force force = backgroundPotential.calculateAxisymmetricForce(new Particle(x, y, 0, 0, 1.2e6, Particle.StellarType.GIANT, 0, 0, false, r));
 			double accel = force.magnitude() / 1.2e6, v_circ = Math.sqrt(accel * r);
-			double vx = -v_circ * Math.sin(theta) + (rand.nextDouble() - 0.5) * 10.0;
-			double vy = v_circ * Math.cos(theta) + (rand.nextDouble() - 0.5) * 10.0;
+			// Increased velocity dispersion for bulge particles for stability
+			double vx = -v_circ * Math.sin(theta) + (rand.nextDouble() - 0.5) * 100.0;
+			double vy = v_circ * Math.cos(theta) + (rand.nextDouble() - 0.5) * 100.0;
 			newParticles.add(new Particle(x, y, vx, vy, 1.2e6, Particle.StellarType.GIANT, 5.0 + rand.nextDouble() * 5.0, 0.02, false, r));
 		}
 		for (int i = 0; i < diskCount; i++) {
