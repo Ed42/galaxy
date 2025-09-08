@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Galaxy Simulator</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <h1>Galaxy Simulator</h1>
+    <canvas id="galaxy-canvas" width="800" height="800"></canvas>
+    <div id="controls">
+        <button id="pause-resume">Pause</button>
+        <button id="reset">Reset</button>
+        <label for="time-scale">Time Scale:</label>
+        <input type="range" id="time-scale" min="1" max="10" value="1">
+        <button id="fast-forward">Fast Forward</button>
+        <label for="toggle-bar">Toggle Bar Potential:</label>
+        <input type="checkbox" id="toggle-bar">
+    </div>
+    <div id="info">
+        <p>Simulation Time: <span id="sim-time">0</span> years</p>
+        <p>Energy: <span id="energy">0</span></p>
+        <p>Particle Count: <span id="particle-count">0</span></p>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
