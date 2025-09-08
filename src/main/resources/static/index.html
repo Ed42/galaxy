@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Galaxy Simulator - Barnes-Hut N-Body</title>
+    
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="/webjars/bootstrap/5.3.2/css/bootstrap.min.css">
+    
+    <!-- Custom CSS -->
+    <style>
+        body {
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2a 100%);
+            color: #e0e0e0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow-x: hidden;
+        }
+        
+        .main-container {
+            padding: 20px;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+        
+        #galaxyCanvas {
+            border: 2px solid #333;
+            background: #000;
+            box-shadow: 0 0 20px rgba(100, 100, 255, 0.3);
+            cursor: crosshair;
+        }
+        
+        .control-panel {
+            background: rgba(30, 30, 40, 0.9);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+        
+        .info-panel {
+            background: rgba(40, 40, 50, 0.9);
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 20px;
+            font-size: 14px;
+        }
+        
+        .stat-item {
+            margin: 5px 0;
+            padding: 5px;
+            background: rgba(50, 50, 60, 0.5);
+            border-radius: 5px;
+        }
+        
+        .control-group {
+            margin-bottom: 15px;
+        }
+        
+        .slider-label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+        }
+        
+        .btn-control {
+            margin: 5px;
+            min-width: 100px;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        
+        .status-running { background: #00ff00; }
+        .status-paused { background: #ffff00; }
+        .status-stopped { background: #ff0000; }
+        
+        h1 {
+            text-align: center;
+            background: linear-gradient(45deg, #00ffff, #ff00ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 30px;
+        }
+        
+        .legend {
+            display: flex;
+            gap: 20px;
+            margin-top: 10px;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <h1>🌌 Galaxy Simulator</h1>
+        
+        <div class="row">
+            <div class="col-lg-3">
+                <!-- Control Panel -->
+                <div class="control-panel">
+                    <h4>Simulation Controls</h4>
+                    
+                    <div class="control-group">
+                        <button id="btnInitialize" class="btn btn-primary btn-control">Initialize</button>
+                        <button id="btnStart" class="btn btn-success btn-control">Start</button>
+                        <button id="btnPause" class="btn btn-warning btn-control">Pause</button>
+                        <button id="btnReset" class="btn btn-danger btn-control">Reset</button>
+                    </div>
+                    
+                    <div class="control-group">
+                        <div class="slider-label">
+                            <span>Particles:</span>
+                            <span id="particleCountLabel">1000</span>
+                        </div>
+                        <input type="range" id="particleCountSlider" class="form-range" 
+                               min="100" max="50000" value="1000" step="100">
+                    </div>
+                    
+                    <div class="control-group">
+                        <div class="slider-label">
+                            <span>Time Scale:</span>
+                            <span id="timeScaleLabel">100 yr/s</span>
+                        </div>
+                        <input type="range" id="timeScaleSlider" class="form-range" 
+                               min="0" max="8" value="2" step="1">
+                    </div>
+                    
+                    <div class="control-group">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="fastForwardToggle">
+                            <label class="form-check-label" for="fastForwardToggle">
+                                Fast Forward (100 Myr/s)
+                            </label>
+                        </div>
+                        
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="barToggle">
+                            <label class="form-check-label" for="barToggle">
+                                Bar Potential
+                            </label>
+                        </div>
+                        
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="quadtreeToggle">
+                            <label class="form-check-label" for="quadtreeToggle">
+                                Show Quadtree
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="control-group">
+                        <div class="slider-label">
+                            <span>Zoom:</span>
+                            <span id="zoomLabel">1.0x</span>
+                        </div>
+                        <input type="range" id="zoomSlider" class="form-range" 
+                               min="0.5" max="10" value="1" step="0.1">
+                    </div>
+                </div>
+                
+                <!-- Info Panel -->
+                <div class="info-panel">
+                    <h5>Simulation Status</h5>
+                    <div class="stat-item">
+                        <span class="status-indicator" id="statusIndicator"></span>
+                        Status: <span id="statusText">Stopped</span>
+                    </div>
+                    <div class="stat-item">
+                        Time: <span id="timeDisplay">0 years</span>
+                    </div>
+                    <div class="stat-item">
+                        Time Scale: <span id="timeScaleDisplay">100 yr/s</span>
+                    </div>
+                    <div class="stat-item">
+                        Energy Drift: <span id="energyDrift">0.00%</span>
+                    </div>
+                    <div class="stat-item">
+                        Total Particles: <span id="totalParticles">0</span>
+                    </div>
+                    <div class="stat-item">
+                        Disk Stars: <span id="diskStars">0</span>
+                    </div>
+                    <div class="stat-item">
+                        Bulge Stars: <span id="bulgeStars">0</span>
+                    </div>
+                    <div class="stat-item">
+                        Habitable Regions: <span id="habitableRegions">0</span>
+                    </div>
+                </div>
+                
+                <!-- Legend -->
+                <div class="info-panel">
+                    <h5>Legend</h5>
+                    <div class="legend">
+                        <div class="legend-item">
+                            <div class="legend-color" style="background: rgb(0, 128, 255);"></div>
+                            <span>Disk Stars</span>
+                        </div>
+                    </div>
+                    <div class="legend">
+                        <div class="legend-item">
+                            <div class="legend-color" style="background: rgb(255, 255, 0);"></div>
+                            <span>Bulge Stars</span>
+                        </div>
+                    </div>
+                    <div class="legend">
+                        <div class="legend-item">
+                            <div class="legend-color" style="background: rgb(255, 0, 0);"></div>
+                            <span>SMBH</span>
+                        </div>
+                    </div>
+                    <div class="legend">
+                        <div class="legend-item">
+                            <div class="legend-color" style="background: rgb(0, 255, 0);"></div>
+                            <span>Habitable</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-lg-9">
+                <!-- Canvas Container -->
+                <div class="text-center">
+                    <canvas id="galaxyCanvas" width="800" height="800"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- JavaScript Libraries -->
+    <script src="/webjars/jquery/3.7.1/jquery.min.js"></script>
+    <script src="/webjars/bootstrap/5.3.2/js/bootstrap.bundle.min.js"></script>
+    <script src="/webjars/sockjs-client/1.5.1/sockjs.min.js"></script>
+    <script src="/webjars/stomp-websocket/2.3.4/stomp.min.js"></script>
+    
+    <!-- Galaxy Simulator JavaScript -->
+    <script src="/js/galaxy-simulator.js"></script>
+</body>
+</html>
