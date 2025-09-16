@@ -60,7 +60,9 @@ public class CudaIntegrator {
 			tempCuFile.deleteOnExit(); tempPtxFile.deleteOnExit();
 
 			Files.copy(cuStream, tempCuFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-			ProcessBuilder pb = new ProcessBuilder("nvcc", "--ptx", "-arch=sm_50", "--use_fast_math", "-o", tempPtxFile.getAbsolutePath(), tempCuFile.getAbsolutePath());
+			// Updated to a more modern compute capability for better performance on recent GPUs.
+			// This value can be tuned depending on the target hardware (e.g., sm_86 for Ampere).
+			ProcessBuilder pb = new ProcessBuilder("nvcc", "--ptx", "-arch=sm_75", "--use_fast_math", "-o", tempPtxFile.getAbsolutePath(), tempCuFile.getAbsolutePath());
 			Process process = pb.start();
 			if (process.waitFor() != 0) {
 				try (InputStream errorStream = process.getErrorStream()) {
@@ -100,7 +102,9 @@ public class CudaIntegrator {
 			Pointer.to(new float[]{(float) dtMyr}), Pointer.to(new float[]{(float) currentTimeMyr}),
 			Pointer.to(new float[]{smbhMass}), Pointer.to(new int[]{barEnabled ? 1 : 0})
 		);
-		JCudaDriver.cuLaunchKernel(kernelFunction, gridSize, 1, 1, BLOCK_SIZE, 1, 1, 0, null, kernelParameters, null);
+		// Allocate shared memory for the particle data tile
+		int sharedMemBytes = BLOCK_SIZE * PARTICLE_STRIDE * Sizeof.FLOAT;
+		JCudaDriver.cuLaunchKernel(kernelFunction, gridSize, 1, 1, BLOCK_SIZE, 1, 1, sharedMemBytes, null, kernelParameters, null);
 	}
 
 	public float[] getRawData() {
