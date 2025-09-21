@@ -100,6 +100,7 @@ public class Simulator {
 	}
 	public double getCurrentEnergy() { return this.integrator.calculateTotalEnergy(this.particles); }
 	public List<Particle> getParticles() { return particles; }
+	public double getInitialEnergy() { return initialEnergy; }
 	public double getCurrentTime() { return currentTime; }
 	public double getTimeScale() { return fastForward ? timeScale * 5.0 : timeScale; }
 	public void setTimeScale(double scale) { this.timeScale = Math.max(1.0, scale); }
