@@ -75,19 +75,13 @@ public class YoshidaIntegrator {
 	}
 
 	private Quadtree buildQuadtree(List<Particle> particles) {
-		double minX = Double.MAX_VALUE, maxX = Double.MIN_VALUE;
-		double minY = Double.MAX_VALUE, maxY = Double.MIN_VALUE;
-		for (Particle p : particles) {
-			if (p.x() < minX) minX = p.x();
-			if (p.x() > maxX) maxX = p.x();
-			if (p.y() < minY) minY = p.y();
-			if (p.y() > maxY) maxY = p.y();
-		}
-		double size = Math.max(maxX - minX, maxY - minY);
-		double centerX = (minX + maxX) / 2.0;
-		double centerY = (minY + maxY) / 2.0;
-		// Add 20% padding to prevent high-velocity particles from escaping the tree mid-step
-		Quadtree tree = new Quadtree(centerX, centerY, size * 1.2);
+		// The original implementation dynamically resized the quadtree based on particle positions,
+		// causing the visual "zoom-in" effect as particles clustered.
+		// By switching to a fixed-size quadtree, we provide a stable visualization frame.
+		// The simulation is centered at (0,0), and particles are removed beyond a 50kpc radius
+		// (defined in Simulator.java). A fixed half-size of 60kpc (50kpc + 20% padding)
+		// ensures all particles remain within the quadtree bounds throughout the simulation.
+		Quadtree tree = new Quadtree(0, 0, 60000);
 		for (Particle p : particles) {
 			tree.insert(p);
 		}
