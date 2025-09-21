@@ -89,7 +89,6 @@
                     <div class="button-group">
                         <button id="playBtn">▶ Start</button>
                         <button id="resetBtn">⟲ Reset</button>
-                        <button id="centerViewBtn">⌖ Center</button>
                         <button id="fastForwardBtn">⏩ FF</button>
                     </div>
                 </div>
@@ -103,7 +102,7 @@
                 </div>
                 <div class="control-group">
                     <h3>Particle Count</h3>
-                    <input type="range" id="particleCountSlider" min="1000" max="10000000" step="1000" value="10000">
+                    <input type="range" id="particleCountSlider" min="1000" max="50000" step="100" value="10000">
                     <div class="input-group">
                         <label for="particleCountInput">Count:</label>
                         <input type="text" id="particleCountInput" style="width: 60px;">
@@ -112,13 +111,7 @@
                 <div class="control-group">
                     <h3>Physics & Visuals</h3>
                     <div class="checkbox-container"><input type="checkbox" id="barPotentialCheck"><label for="barPotentialCheck">Bar Potential</label></div>
-                    <div class="checkbox-container"><input type="checkbox" id="quadtreeOverlayCheck"><label for="quadtreeOverlayCheck">Quadtree Overlay</label></div>
                     <div class="checkbox-container"><input type="checkbox" id="motionTrailsCheck"><label for="motionTrailsCheck">Motion Trails</label></div>
-                    <input type="range" id="quadtreeDepthSlider" min="1" max="15" value="8">
-                    <div class="input-group">
-                        <label for="quadtreeDepthInput">Depth:</label>
-                        <input type="text" id="quadtreeDepthInput">
-                    </div>
                     <input type="range" id="spiralArmSlider" min="1" max="5" step="1" value="2">
                     <div class="input-group">
                         <label for="spiralArmInput">Spiral Arms:</label>
@@ -152,8 +145,8 @@
     </div>
 </div>
 <script>
-    let canvas, ctx, isRunning = false, showQuadtree = false, showMotionTrails = false, zoom = 1.0, offsetX = 0, offsetY = 0, isDragging = false, lastMouseX, lastMouseY, lastFrameTime = 0;
-    let simulationState = { particles: [], currentTime: 0, energy: 0, energyDrift: 0, particleCount: 0, avgVelocity: 0, avgDistanceToCenter: 0, quadtreeBounds: [], fastForward: false };
+    let canvas, ctx, isRunning = false, showMotionTrails = false, zoom = 1.0, offsetX = 0, offsetY = 0, isDragging = false, lastMouseX, lastMouseY, lastFrameTime = 0;
+    let simulationState = { particles: [], currentTime: 0, energy: 0, energyDrift: 0, particleCount: 0, avgVelocity: 0, avgDistanceToCenter: 0, fastForward: false };
     let socket;
 
     window.onload = () => {
@@ -191,12 +184,6 @@
         socket.onerror = (error) => console.error("WebSocket Error:", error);
     }
 
-    function centerView() {
-        offsetX = 0;
-        offsetY = 0;
-        zoom = 1.0;
-    }
-
     function setupEventListeners() {
         const canvasContainer = document.querySelector('.canvas-container');
         const resizeObserver = new ResizeObserver(entries => {
@@ -225,7 +212,6 @@
         document.getElementById('playBtn').addEventListener('click', () => postRequest(isRunning ? '/api/pause' : '/api/start', {}));
         document.getElementById('resetBtn').addEventListener('click', () => postRequest('/api/reset', {}));
         document.getElementById('fastForwardBtn').addEventListener('click', toggleFastForward);
-        document.getElementById('centerViewBtn').addEventListener('click', centerView);
 
         window.addEventListener('keydown', e => {
             if (document.activeElement.tagName === 'INPUT') return;
@@ -233,7 +219,6 @@
                 case 'Space': e.preventDefault(); postRequest(isRunning ? '/api/pause' : '/api/start', {}); break;
                 case 'KeyR': e.preventDefault(); postRequest('/api/reset', {}); break;
                 case 'KeyF': e.preventDefault(); toggleFastForward(); break;
-                case 'KeyC': e.preventDefault(); centerView(); break;
             }
         });
 
@@ -264,12 +249,10 @@
 
         setupTwoWayBinding('timeScaleSlider', 'timeScaleInput', true, (val) => postRequest('/api/timeScale', { timeScale: val }));
         setupTwoWayBinding('particleCountSlider', 'particleCountInput', false, (val) => postRequest('/api/particleCount', { count: val }));
-        setupTwoWayBinding('quadtreeDepthSlider', 'quadtreeDepthInput', false, (val) => updateQuadtreeSettings(val));
         setupTwoWayBinding('spiralArmSlider', 'spiralArmInput', false, (val) => postRequest('/api/spiralArms', { arms: val }));
         setupTwoWayBinding('smbhMassSlider', 'smbhMassInput', false, (val) => postRequest('/api/smbhMass', { mass: val }), true);
 
         document.getElementById('barPotentialCheck').addEventListener('change', () => postRequest('/api/barPotential', { enabled: document.getElementById('barPotentialCheck').checked }));
-        document.getElementById('quadtreeOverlayCheck').addEventListener('change', updateQuadtreeSettings);
         document.getElementById('motionTrailsCheck').addEventListener('change', (e) => showMotionTrails = e.target.checked);
     }
 
@@ -311,7 +294,6 @@
             const lineWidth = 1 / (zoom * worldToCanvasScale);
             const particleRadius = 1.2 / (zoom * worldToCanvasScale);
 
-            if (showQuadtree && simulationState.quadtreeBounds) renderQuadtree(lineWidth);
             if (simulationState.particles) renderParticles(particleRadius);
             renderSmbh(lineWidth);
         }
@@ -342,14 +324,6 @@
         ctx.stroke();
     }
 
-    function renderQuadtree(lineWidth) {
-        ctx.strokeStyle = 'rgba(0, 255, 0, 0.3)';
-        ctx.lineWidth = lineWidth;
-        simulationState.quadtreeBounds.forEach(b => {
-            ctx.strokeRect(b.x - b.size, -(b.y + b.size), b.size * 2, b.size * 2);
-        });
-    }
-
     function updateUI() {
         if (!simulationState) return;
         document.getElementById('simTime').textContent = `${(simulationState.currentTime / 1e6).toFixed(2)} Myr`;
@@ -366,14 +340,6 @@
         } catch (error) {
             console.error('Error posting request:', error);
         }
-    }
-
-    function updateQuadtreeSettings(depthValue = null) {
-        const checkbox = document.getElementById('quadtreeOverlayCheck');
-        const slider = document.getElementById('quadtreeDepthSlider');
-        const depth = depthValue !== null && typeof depthValue === 'number' ? depthValue : parseInt(slider.value, 10);
-        showQuadtree = checkbox.checked;
-        postRequest('/api/quadtree', { enabled: showQuadtree, depth: depth });
     }
 </script>
 </body>

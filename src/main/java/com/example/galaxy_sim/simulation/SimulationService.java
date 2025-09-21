@@ -99,7 +99,6 @@ public class SimulationService {
 		state.put("fastForward", simulator.isFastForward());
 		state.put("avgVelocity", (particleCount > 0) ? totalVelocity / particleCount : 0.0);
 		state.put("avgDistanceToCenter", (particleCount > 0) ? totalDistance / particleCount : 0.0);
-		state.put("quadtreeBounds", simulator.getQuadtreeBounds(rawData));
 
 		socketHandler.broadcast(state);
 	}

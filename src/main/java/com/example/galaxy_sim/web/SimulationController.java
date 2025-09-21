@@ -94,8 +94,6 @@ public class SimulationController {
 			depth = ((Number) depthValue).intValue();
 		}
 
-		simulator.setQuadtreeOverlayEnabled(enabled);
-		simulator.setQuadtreeMaxDepth(depth);
 		return Map.of("status", "updated");
 	}
 }

@@ -21,9 +21,6 @@ public class Simulator {
 	private final CudaIntegrator integrator;
 	private final BackgroundPotential backgroundPotential; // Used for initialization only
 
-	private boolean quadtreeOverlayEnabled = false;
-	private int quadtreeMaxDepth = 8;
-
 	public Simulator() {
 		this.backgroundPotential = new BackgroundPotential();
 		this.integrator = new CudaIntegrator();
@@ -44,35 +41,6 @@ public class Simulator {
 
 	public float[] getRawDataForVisualization() {
 		return integrator.getRawData();
-	}
-
-	public List<Quadtree.Bounds> getQuadtreeBounds(float[] rawData) {
-		if (!this.quadtreeOverlayEnabled || rawData.length == 0) {
-			return new ArrayList<>();
-		}
-		// Build the quadtree on the CPU from the latest data for visualization only
-		List<Particle> particles = new ArrayList<>(rawData.length / 6);
-		for (int i = 0; i < rawData.length / 6; i++) {
-			int base = i * 6;
-			particles.add(new Particle(rawData[base], rawData[base+1], 0,0,0, Particle.StellarType.MAIN_SEQUENCE,0,0,false,0));
-		}
-
-		double minX = Double.MAX_VALUE, maxX = Double.MIN_VALUE;
-		double minY = Double.MAX_VALUE, maxY = Double.MIN_VALUE;
-		for (Particle p : particles) {
-			if (p.x() < minX) minX = p.x();
-			if (p.x() > maxX) maxX = p.x();
-			if (p.y() < minY) minY = p.y();
-			if (p.y() > maxY) maxY = p.y();
-		}
-		double size = Math.max(maxX - minX, maxY - minY);
-		double centerX = (minX + maxX) / 2.0;
-		double centerY = (minY + maxY) / 2.0;
-		Quadtree tree = new Quadtree(centerX, centerY, size * 1.2);
-		for (Particle p : particles) {
-			tree.insert(p);
-		}
-		return tree.getBounds(this.quadtreeMaxDepth);
 	}
 
 	public double calculateTotalEnergyFromList(List<Particle> particleList) {
@@ -143,6 +111,4 @@ public class Simulator {
 	public void setParticleCount(int count) { this.particleCount = count; reset(); }
 	public void setNumberOfArms(int n) { /* No-op */ }
 	public void setSmbhMass(double mass) { integrator.setSmbhMass(mass); }
-	public void setQuadtreeOverlayEnabled(boolean enabled) { this.quadtreeOverlayEnabled = enabled; }
-	public void setQuadtreeMaxDepth(int depth) { this.quadtreeMaxDepth = depth; }
 }
