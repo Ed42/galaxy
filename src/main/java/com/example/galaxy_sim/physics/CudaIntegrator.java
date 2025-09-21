@@ -62,7 +62,7 @@ public class CudaIntegrator {
 			Files.copy(cuStream, tempCuFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
 			// Updated to a more modern compute capability for better performance on recent GPUs.
 			// This value can be tuned depending on the target hardware (e.g., sm_86 for Ampere).
-			ProcessBuilder pb = new ProcessBuilder("nvcc", "--ptx", "-arch=sm_75", "--use_fast_math", "-o", tempPtxFile.getAbsolutePath(), tempCuFile.getAbsolutePath());
+			ProcessBuilder pb = new ProcessBuilder("/usr/local/cuda/bin/nvcc", "--ptx", "-arch=sm_75", "--use_fast_math", "-o", tempPtxFile.getAbsolutePath(), tempCuFile.getAbsolutePath());
 			Process process = pb.start();
 			if (process.waitFor() != 0) {
 				try (InputStream errorStream = process.getErrorStream()) {
